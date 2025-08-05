@@ -1,0 +1,253 @@
+/* Purrductive MVP - Minimal Cat Widget Styles - Copy this into your content.css file */
+
+#purrductive-cat-widget {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 120px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid #ff6b6b;
+  border-radius: 15px;
+  z-index: 10000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  cursor: move;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+#purrductive-cat-widget:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+.cat-container {
+  padding: 8px;
+  text-align: center;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cat-sprite {
+  font-size: 24px;
+  animation: catBob 2s ease-in-out infinite;
+  user-select: none;
+}
+
+@keyframes catBob {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-3px); }
+}
+
+.cat-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.health-bar, .happiness-bar {
+  height: 6px;
+  background: rgba(221, 221, 221, 0.8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.health-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
+  transition: width 0.5s ease;
+  border-radius: 3px;
+}
+
+.happiness-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ecdc4, #7ed6cc);
+  transition: width 0.5s ease;
+  border-radius: 3px;
+}
+
+.cat-message {
+  font-size: 10px;
+  color: #666;
+  min-height: 12px;
+  font-weight: 500;
+}
+
+/* Site-specific widget styling */
+.productive-site {
+  animation: happyPulse 3s ease-in-out infinite;
+}
+
+.unproductive-site {
+  animation: sadShake 1s ease-in-out infinite;
+}
+
+@keyframes happyPulse {
+  0%, 100% { 
+    border-color: #4ecdc4;
+    box-shadow: 0 4px 12px rgba(78, 205, 196, 0.3);
+  }
+  50% { 
+    border-color: #7ed6cc;
+    box-shadow: 0 6px 20px rgba(78, 205, 196, 0.5);
+  }
+}
+
+@keyframes sadShake {
+  0%, 100% { 
+    border-color: #ff6b6b;
+    transform: translateX(0px);
+  }
+  25% { 
+    border-color: #ff5252;
+    transform: translateX(-2px);
+  }
+  75% { 
+    border-color: #ff5252;
+    transform: translateX(2px);
+  }
+}
+
+/* Productivity Warning Popup */
+.productivity-warning {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border: 3px solid #ff6b6b;
+  border-radius: 20px;
+  padding: 25px;
+  max-width: 400px;
+  z-index: 10001;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  animation: popupSlideIn 0.3s ease-out;
+}
+
+@keyframes popupSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.warning-cat {
+  font-size: 48px;
+  margin-bottom: 15px;
+  user-select: none;
+}
+
+.productivity-warning h3 {
+  color: #ff6b6b;
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+
+.productivity-warning p {
+  color: #666;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.warning-buttons {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.warning-button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.continue-btn {
+  background: #ff6b6b;
+  color: white;
+}
+
+.continue-btn:hover {
+  background: #ff5252;
+  transform: translateY(-1px);
+}
+
+.mute-btn {
+  background: #ddd;
+  color: #666;
+}
+
+.mute-btn:hover {
+  background: #ccc;
+}
+
+.close-btn {
+  background: #4ecdc4;
+  color: white;
+}
+
+.close-btn:hover {
+  background: #45b7aa;
+  transform: translateY(-1px);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #purrductive-cat-widget {
+    width: 100px;
+    height: 85px;
+    top: 10px;
+    right: 10px;
+  }
+  
+  .cat-sprite {
+    font-size: 20px;
+  }
+  
+  .cat-message {
+    font-size: 9px;
+  }
+  
+  .productivity-warning {
+    max-width: 320px;
+    margin: 0 20px;
+  }
+  
+  .warning-buttons {
+    flex-direction: column;
+  }
+  
+  .warning-button {
+    width: 100%;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  #purrductive-cat-widget {
+    border-width: 3px;
+    background: white;
+  }
+  
+  .health-fill {
+    background: #d00;
+  }
+  
+  .happiness-fill {
+    background: #008;
+  }
+}
