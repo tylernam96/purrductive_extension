@@ -16,18 +16,19 @@
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen flex flex-col items-center justify-start p-6 text-white">
-    <!-- Header with Cat and Title -->
-    <h1 class="text-4xl text-red-500 font-bold">Tailwind Works!</h1>
+    
+    <!-- Header -->
     <div class="flex flex-col items-center mb-8">
-        <div class="text-5xl animate-bounce mb-3">🐱</div>
+        <div class="text-5xl animate-bounce mb-3 cat-emoji">🐱</div>
         <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             Productivity Dashboard
         </h1>
     </div>
 
-    <!-- AI-Style Search Bar -->
+    <!-- Search Bar -->
     <div class="relative w-full max-w-lg mb-8">
         <input
+            id="searchInput"
             type="text"
             placeholder="Search apps, analyze productivity..."
             class="w-full py-4 px-6 pl-12 bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl 
@@ -42,124 +43,61 @@
         </div>
     </div>
 
-    <!-- Health & Happiness Bars with AI Styling -->
-    <div class="w-full max-w-lg space-y-6 mb-8">
-        <!-- Health Bar -->
-        <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5">
-            <div class="flex justify-between items-center mb-3">
-                <label class="text-sm font-semibold text-slate-300">Health Score</label>
-                <span class="text-sm font-bold text-green-400">80%</span>
-            </div>
-            <div class="w-full h-3 bg-slate-700 rounded-full overflow-hidden">
-                <div class="bg-gradient-to-r from-green-500 to-emerald-400 h-full rounded-full shadow-lg transition-all duration-700 ease-out" 
-                     style="width: 80%">
-                    <div class="h-full bg-gradient-to-r from-transparent to-white/20 rounded-full"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Happiness Bar -->
-        <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5">
-            <div class="flex justify-between items-center mb-3">
-                <label class="text-sm font-semibold text-slate-300">Happiness Level</label>
-                <span class="text-sm font-bold text-pink-400">65%</span>
-            </div>
-            <div class="w-full h-3 bg-slate-700 rounded-full overflow-hidden">
-                <div class="bg-gradient-to-r from-pink-500 to-rose-400 h-full rounded-full shadow-lg transition-all duration-700 ease-out" 
-                     style="width: 65%">
-                    <div class="h-full bg-gradient-to-r from-transparent to-white/20 rounded-full"></div>
-                </div>
-            </div>
-        </div>
+<!-- Health Bar -->
+<div class="w-full max-w-lg mb-8">
+  <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5">
+    <div class="flex justify-between items-center mb-3">
+      <label class="text-sm font-semibold text-slate-300">Health Score</label>
+      <span class="text-sm font-bold text-green-400 health-percentage">80%</span>
     </div>
+<div class="w-full h-3 bg-slate-700 rounded-full overflow-hidden health-bar">
+  <div class="health-fill h-full transition-all duration-700 ease-out" style="width: 0%; background: linear-gradient(to right, #10b981, #059669); border-radius: inherit;"></div>
+</div>
 
-    <!-- Productivity & Time Stats with Glass Effect -->
+    </div>
+    </div>
+  </div>
+</div>
+
+
+    <!-- Productivity & Time Stats -->
     <div class="grid grid-cols-2 gap-6 w-full max-w-lg mb-8">
         <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
             <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Productive Time</p>
-            <p class="text-2xl font-bold text-green-400">3h 45m</p>
-            <div class="mt-2 text-xs text-green-500">↗ +15% today</div>
+            <p class="text-2xl font-bold text-green-400 productive-time">Loading...</p>
+            <div class="mt-2 text-xs text-green-500 productive-change">Calculating...</div>
         </div>
         <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
             <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Unproductive Time</p>
-            <p class="text-2xl font-bold text-red-400">1h 20m</p>
-            <div class="mt-2 text-xs text-red-500">↘ -8% today</div>
+            <p class="text-2xl font-bold text-red-400 unproductive-time">Loading...</p>
+            <div class="mt-2 text-xs text-red-500 unproductive-change">Calculating...</div>
         </div>
     </div>
 
-    <!-- Time on Specific Apps with Dynamic Colors -->
+    <!-- App Usage -->
     <div class="w-full max-w-lg">
         <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
             <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
             App Usage Analytics
         </h3>
-        <div class="space-y-3">
-            <!-- YouTube - Unproductive (Red) -->
+        <div class="space-y-3 app-usage-container">
             <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
                         hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
                 <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-red-500/20 rounded-lg flex items-center justify-center">
-                        <span class="text-red-400 text-sm">📺</span>
+                    <div class="w-8 h-8 bg-gray-500/20 rounded-lg flex items-center justify-center">
+                        <span class="text-gray-400 text-sm">⏳</span>
                     </div>
-                    <span class="text-slate-200 font-medium">YouTube</span>
+                    <span class="text-slate-200 font-medium">Loading apps...</span>
                 </div>
                 <div class="text-right">
-                    <span class="text-red-400 font-bold text-lg">45m</span>
-                    <div class="text-xs text-red-500/70">Unproductive</div>
-                </div>
-            </div>
-
-            <!-- Notion - Productive (Green) -->
-            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
-                        hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
-                        <span class="text-green-400 text-sm">📝</span>
-                    </div>
-                    <span class="text-slate-200 font-medium">Notion</span>
-                </div>
-                <div class="text-right">
-                    <span class="text-green-400 font-bold text-lg">1h 10m</span>
-                    <div class="text-xs text-green-500/70">Productive</div>
-                </div>
-            </div>
-
-            <!-- Figma - Productive (Green) -->
-            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
-                        hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
-                        <span class="text-green-400 text-sm">🎨</span>
-                    </div>
-                    <span class="text-slate-200 font-medium">Figma</span>
-                </div>
-                <div class="text-right">
-                    <span class="text-green-400 font-bold text-lg">2h</span>
-                    <div class="text-xs text-green-500/70">Productive</div>
-                </div>
-            </div>
-
-            <!-- Instagram - Unproductive (Red) -->
-            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
-                        hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-red-500/20 rounded-lg flex items-center justify-center">
-                        <span class="text-red-400 text-sm">📷</span>
-                    </div>
-                    <span class="text-slate-200 font-medium">Instagram</span>
-                </div>
-                <div class="text-right">
-                    <span class="text-red-400 font-bold text-lg">32m</span>
-                    <div class="text-xs text-red-500/70">Unproductive</div>
+                    <span class="text-gray-400 font-bold text-lg">--</span>
+                    <div class="text-xs text-gray-500/70">Please wait</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Footer with AI-style accent -->
-    <div class="mt-12 text-center">
-        <div class="w-12 h-px bg-gradient-to-r from-transparent via-slate-600 to-transparent mb-4"></div>
-        <p class="text-xs text-slate-500">Powered by AI Analytics</p>
-    </div>
+    <!-- JS -->
+    <script src="newtab.js"></script>
 </body>
 </html>

@@ -1,18 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "Purrductive",
-  "version": "1.0",
-  "description": "A productivity tracker with a virtual cat companion",
+  "name": "Purrductive - Cat Productivity Tracker",
+  "version": "1.0.0",
+  "description": "Track your productivity with a virtual cat companion",
   
   "permissions": [
     "storage",
-    "activeTab",
     "tabs",
-    "scripting"
+    "alarms",
+    "scripting",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "<all_urls>"
   ],
   
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   
   "content_scripts": [
@@ -29,7 +35,7 @@
   
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Purrductive"
+    "default_title": "Purrductive Dashboard"
   },
   
   "icons": {

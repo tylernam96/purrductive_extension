@@ -1,286 +1,503 @@
-class NewTabPage {
-    constructor() {
-        this.popularSites = [
-            'youtube.com',
-            'facebook.com',
-            'twitter.com',
-            'instagram.com',
-            'reddit.com',
-            'wikipedia.org',
-            'amazon.com',
-            'netflix.com'
+// newtab.js - FIXED: Proper productivity calculations and display
+class ProductivityDashboard {
+  constructor() {
+    this.init();
+    this.setupEventListeners();
+    this.loadInitialData();
+  }
+
+  async init() {
+    console.log('Initializing ProductivityDashboard...');
+    
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      console.log('Received message:', message.type, message);
+      
+      if (message.type === 'STATS_UPDATE') {
+        this.updateDashboard(message.stats);
+      }
+    });
+  }
+
+  setupEventListeners() {
+    document.addEventListener('DOMContentLoaded', () => {
+      this.loadInitialData();
+      // Search setup is now handled in setupSearchFunctionality() after stats load
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.loadInitialData();
+    });
+  }
+
+  async loadInitialData() {
+    try {
+      console.log('Loading initial dashboard data...');
+      
+      const stats = await chrome.runtime.sendMessage({ type: 'GET_ALL_STATS' });
+      console.log('Received stats:', stats);
+      
+      if (stats) {
+        this.updateDashboard(stats);
+      } else {
+        console.warn('No stats received from background script');
+        this.showLoadingState();
+      }
+      
+      chrome.runtime.sendMessage({ type: 'REQUEST_STATS_BROADCAST' });
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+      this.showLoadingState();
+      
+      setTimeout(() => {
+        this.loadInitialData();
+      }, 2000);
+    }
+  }
+
+  // FIXED: Force correct productivity calculations regardless of background script
+  updateDashboard(stats) {
+    console.log('=== DASHBOARD UPDATE DEBUG ===');
+    console.log('Raw stats received:', stats);
+    
+    // Store current stats for search functionality
+    this.currentStats = stats;
+    
+    // AGGRESSIVE FIX: Always recalculate from scratch
+    let totalProductive = 0;
+    let totalUnproductive = 0;
+    
+    console.log('\n📊 PRODUCTIVITY RECALCULATION:');
+    
+    if (stats.websites && stats.websites.length > 0) {
+      console.log('Processing', stats.websites.length, 'websites...');
+      
+      stats.websites.forEach((site, index) => {
+        const timeMs = parseInt(site.time) || 0;
+        const category = site.category || 'unknown';
+        
+        console.log(`${index + 1}. ${site.domain}: ${timeMs}ms (${category})`);
+        
+        if (category === 'productive') {
+          totalProductive += timeMs;
+        } else if (category === 'unproductive' || category === 'distracting') {
+          totalUnproductive += timeMs;
+        } else if (category === 'neutral') {
+          // For now, let's count neutral sites - you can decide which category they should go to
+          console.log(`   ℹ️ Neutral site detected: ${site.domain} - adding to productive for now`);
+          totalProductive += timeMs; // Change this line to totalUnproductive += timeMs; if you prefer
+        }
+      });
+      
+      // Force override all productivity values
+      stats.productiveTimeRaw = totalProductive;
+      stats.unproductiveTimeRaw = totalUnproductive;
+      stats.productiveTime = this.formatTime(totalProductive);
+      stats.unproductiveTime = this.formatTime(totalUnproductive);
+      
+      console.log('\n🎯 FINAL CALCULATIONS:');
+      console.log('Total Productive:', totalProductive, 'ms =', stats.productiveTime);
+      console.log('Total Unproductive:', totalUnproductive, 'ms =', stats.unproductiveTime);
+    } else {
+      console.log('⚠️ No websites data - setting to 0');
+      stats.productiveTime = '0m';
+      stats.unproductiveTime = '0m';
+      stats.productiveTimeRaw = 0;
+      stats.unproductiveTimeRaw = 0;
+    }
+    
+    // Force update the display immediately
+    console.log('🔄 Updating display with corrected values...');
+    
+    this.updateHealthBar(stats.catHealth);
+    this.updateProductivityStats(stats);
+    this.updateAppUsage(stats.websites);
+    this.updateCatEmoji(stats);
+    
+    // Double-check the display was updated
+    setTimeout(() => {
+      const productiveElement = document.querySelector('.productive-time');
+      const unproductiveElement = document.querySelector('.unproductive-time');
+      console.log('✅ Display check - Productive shown:', productiveElement?.textContent);
+      console.log('✅ Display check - Unproductive shown:', unproductiveElement?.textContent);
+    }, 100);
+    
+    this.setupSearchFunctionality();
+    console.log('================================\n');
+  }
+
+  // Helper method to format time consistently
+  formatTime(ms) {
+    if (!ms || ms === 0) return '0m';
+    
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  }
+
+  // FIXED: Google search functionality instead of filtering dashboard data
+  setupSearchFunctionality() {
+    const searchInput = document.getElementById('searchInput');
+    
+    if (!searchInput) {
+      console.error('Search input element not found!');
+      return;
+    }
+    
+    // Remove any existing event listeners
+    const newSearchInput = searchInput.cloneNode(true);
+    searchInput.parentNode.replaceChild(newSearchInput, searchInput);
+    
+    // Function to handle search or direct navigation
+    const handleSearch = (query) => {
+      if (query.trim() === '') {
+        return; // Don't search for empty queries
+      }
+      
+      const trimmedQuery = query.trim();
+      
+      // Check if it looks like a URL or domain
+      const isUrl = (str) => {
+        // Check for common URL patterns
+        const urlPatterns = [
+          /^https?:\/\//i,                    // starts with http:// or https://
+          /^[a-z0-9.-]+\.[a-z]{2,}$/i,       // domain.com format
+          /^www\.[a-z0-9.-]+\.[a-z]{2,}$/i,  // www.domain.com format
+          /^[a-z0-9.-]+\.(com|org|net|edu|gov|io|co|uk|de|fr|jp|cn|au|ca)$/i // common TLDs
         ];
         
-        this.init();
+        return urlPatterns.some(pattern => pattern.test(str));
+      };
+      
+      if (isUrl(trimmedQuery)) {
+        // It's a URL or domain - navigate directly
+        let url = trimmedQuery;
+        
+        // Add https:// if no protocol specified
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        
+        console.log('Navigating directly to:', url);
+        window.location.href = url;
+      } else {
+        // It's a search query - use Google
+        const encodedQuery = encodeURIComponent(trimmedQuery);
+        const googleSearchUrl = `https://www.google.com/search?q=${encodedQuery}`;
+        
+        console.log('Searching Google for:', trimmedQuery);
+        window.location.href = googleSearchUrl;
+      }
+    };
+    
+    // Handle Enter key press
+    newSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const query = e.target.value;
+        console.log('Searching Google for:', query);
+        handleSearch(query);
+      }
+    });
+    
+    // Optional: Handle form submission if the input is in a form
+    const form = newSearchInput.closest('form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const query = newSearchInput.value;
+        console.log('Form submitted - searching Google for:', query);
+        handleSearch(query);
+      });
     }
+    
+    // Set placeholder text to match Chrome's address bar
+    newSearchInput.placeholder = 'Search Google or type a URL';
+    
+    console.log('Google search functionality setup complete!');
+  }
 
-    init() {
-        // Wait for DOM to be ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => this.setup());
+  updateHealthBar(health) {
+    const healthPercentage = document.querySelector('.health-percentage');
+    const healthFill = document.querySelector('.health-fill');
+    
+    if (healthPercentage) healthPercentage.textContent = `${health}%`;
+    if (healthFill) {
+      healthFill.style.width = `${health}%`;
+      
+      healthFill.className = 'h-full transition-all duration-700 ease-out';
+      
+      if (health < 30) {
+        healthFill.style.background = 'linear-gradient(to right, #ef4444, #f87171)';
+        healthFill.style.borderRadius = 'inherit';
+      } else if (health < 60) {
+        healthFill.style.background = 'linear-gradient(to right, #eab308, #facc15)';
+        healthFill.style.borderRadius = 'inherit';
+      } else {
+        healthFill.style.background = 'linear-gradient(to right, #10b981, #059669)';
+        healthFill.style.borderRadius = 'inherit';
+      }
+    }
+  }
+
+  // FIXED: Simplified productivity stats without change calculations
+  updateProductivityStats(stats) {
+    const productiveTime = document.querySelector('.productive-time');
+    const unproductiveTime = document.querySelector('.unproductive-time');
+    const productiveChange = document.querySelector('.productive-change');
+    const unproductiveChange = document.querySelector('.unproductive-change');
+    
+    if (productiveTime) productiveTime.textContent = stats.productiveTime;
+    if (unproductiveTime) unproductiveTime.textContent = stats.unproductiveTime;
+    
+    // FIXED: Hide change indicators to reduce clutter
+    if (productiveChange) {
+      productiveChange.textContent = '';
+      productiveChange.className = 'mt-2 text-xs text-transparent';
+    }
+    if (unproductiveChange) {
+      unproductiveChange.textContent = '';
+      unproductiveChange.className = 'mt-2 text-xs text-transparent';
+    }
+  }
+
+  // FIXED: Proper change calculation method
+  async calculateAndDisplayChanges(stats, productiveChangeEl, unproductiveChangeEl) {
+    try {
+      // Get yesterday's data for comparison
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayKey = yesterday.toDateString();
+      
+      const dailyStatsData = await chrome.runtime.sendMessage({ type: 'GET_DAILY_STATS' });
+      const yesterdayStats = dailyStatsData?.dailyStats?.[yesterdayKey];
+      
+      if (yesterdayStats && productiveChangeEl && unproductiveChangeEl) {
+        // Calculate percentage changes
+        const todayProductive = stats.productiveTimeRaw || 0;
+        const todayUnproductive = stats.unproductiveTimeRaw || 0;
+        const yesterdayProductive = yesterdayStats.productive || 0;
+        const yesterdayUnproductive = yesterdayStats.unproductive || 0;
+        
+        // FIXED: Whole number percentage calculations
+        const productiveChange = yesterdayProductive > 0 ? 
+          Math.round(((todayProductive - yesterdayProductive) / yesterdayProductive) * 100) : 
+          (todayProductive > 0 ? 100 : 0);
+          
+        const unproductiveChange = yesterdayUnproductive > 0 ? 
+          Math.round(((todayUnproductive - yesterdayUnproductive) / yesterdayUnproductive) * 100) : 
+          (todayUnproductive > 0 ? 100 : 0);
+        
+        // Update productive change display
+        if (productiveChange > 0) {
+          productiveChangeEl.textContent = `↗ +${productiveChange}% vs yesterday`;
+          productiveChangeEl.className = 'mt-2 text-xs text-green-500';
+        } else if (productiveChange < 0) {
+          productiveChangeEl.textContent = `↘ ${productiveChange}% vs yesterday`;
+          productiveChangeEl.className = 'mt-2 text-xs text-red-500';
         } else {
-            this.setup();
+          productiveChangeEl.textContent = `→ No change vs yesterday`;
+          productiveChangeEl.className = 'mt-2 text-xs text-gray-500';
         }
-    }
-
-    setup() {
-        this.updateTime();
-        this.loadCatStatus();
-        this.loadDailyStats();
-        this.setupSearch();
-        this.setGreeting();
         
-        // Update time every second
-        setInterval(() => this.updateTime(), 1000);
-        
-        // Update cat status every 30 seconds
-        setInterval(() => this.loadCatStatus(), 30000);
-    }
-
-    updateTime() {
-        const now = new Date();
-        const timeString = now.toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-        const dateString = now.toLocaleDateString([], { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        });
-
-        const timeDisplay = document.getElementById('time-display');
-        const dateDisplay = document.getElementById('date-display');
-        
-        if (timeDisplay) timeDisplay.textContent = timeString;
-        if (dateDisplay) dateDisplay.textContent = dateString;
-    }
-
-    setGreeting() {
-        const hour = new Date().getHours();
-        let greeting;
-
-        if (hour < 12) {
-            greeting = 'Good morning!';
-        } else if (hour < 17) {
-            greeting = 'Good afternoon!';
+        // Update unproductive change display (reverse colors - less unproductive is good)
+        if (unproductiveChange > 0) {
+          unproductiveChangeEl.textContent = `↗ +${unproductiveChange}% vs yesterday`;
+          unproductiveChangeEl.className = 'mt-2 text-xs text-red-500';
+        } else if (unproductiveChange < 0) {
+          unproductiveChangeEl.textContent = `↘ ${unproductiveChange}% vs yesterday`;
+          unproductiveChangeEl.className = 'mt-2 text-xs text-green-500';
         } else {
-            greeting = 'Good evening!';
+          unproductiveChangeEl.textContent = `→ No change vs yesterday`;
+          unproductiveChangeEl.className = 'mt-2 text-xs text-gray-500';
         }
+      } else {
+        // No yesterday data available - hide the change indicators
+        if (productiveChangeEl) {
+          productiveChangeEl.textContent = ``;
+          productiveChangeEl.className = 'mt-2 text-xs text-transparent';
+        }
+        if (unproductiveChangeEl) {
+          unproductiveChangeEl.textContent = ``;
+          unproductiveChangeEl.className = 'mt-2 text-xs text-transparent';
+        }
+      }
+    } catch (error) {
+      console.error('Error calculating changes:', error);
+      // Fallback display - hide change indicators on error
+      if (productiveChangeEl) {
+        productiveChangeEl.textContent = ``;
+        productiveChangeEl.className = 'mt-2 text-xs text-transparent';
+      }
+      if (unproductiveChangeEl) {
+        unproductiveChangeEl.textContent = ``;
+        unproductiveChangeEl.className = 'mt-2 text-xs text-transparent';
+      }
+    }
+  }
 
-        const greetingElement = document.getElementById('greeting');
-        if (greetingElement) greetingElement.textContent = greeting;
+  updateAppUsage(websites) {
+    const appUsageContainer = document.querySelector('.app-usage-container');
+    if (!appUsageContainer) return;
+
+    appUsageContainer.innerHTML = '';
+
+    if (!websites || websites.length === 0) {
+      const noDataElement = document.createElement('div');
+      noDataElement.className = `bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
+                                hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group`;
+      noDataElement.innerHTML = `
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
+            <span class="text-blue-400 text-sm">📊</span>
+          </div>
+          <span class="text-slate-200 font-medium">Start browsing to see data</span>
+        </div>
+        <div class="text-right">
+          <span class="text-blue-400 font-bold text-lg">--</span>
+          <div class="text-xs text-blue-400/70">No data yet</div>
+        </div>
+      `;
+      appUsageContainer.appendChild(noDataElement);
+      return;
     }
 
-    async loadCatStatus() {
-        try {
-            // Try to get cat status from chrome extension
-            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                const response = await chrome.runtime.sendMessage({ type: 'GET_CAT_STATUS' });
-                if (response) {
-                    this.updateCatDisplay(response.catHealth || 80, response.catHappiness || 70);
-                    return;
-                }
-            }
-        } catch (error) {
-            console.log('Chrome extension not available, using default values');
-        }
-        
-        // Fallback to default values
-        this.updateCatDisplay(80, 70);
+    websites.slice(0, 8).forEach(website => {
+      const appElement = this.createAppUsageElement(website);
+      appUsageContainer.appendChild(appElement);
+    });
+
+    this.currentWebsites = websites;
+  }
+
+  createAppUsageElement(website) {
+    const formatTime = (ms) => {
+      const hours = Math.floor(ms / (1000 * 60 * 60));
+      const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes}m`;
+    };
+
+    const getAppIcon = (domain) => {
+      const iconMap = {
+        'youtube.com': '📺',
+        'instagram.com': '📷',
+        'facebook.com': '📘',
+        'twitter.com': '🐦',
+        'reddit.com': '🤖',
+        'tiktok.com': '🎵',
+        'netflix.com': '🎬',
+        'twitch.tv': '🎮',
+        'github.com': '👨‍💻',
+        'stackoverflow.com': '💻',
+        'docs.google.com': '📄',
+        'notion.so': '📝',
+        'figma.com': '🎨',
+        'linkedin.com': '💼',
+        'medium.com': '📖',
+        'news.google.com': '📰',
+        'default': '🌐'
+      };
+      
+      for (const [key, icon] of Object.entries(iconMap)) {
+        if (domain.includes(key)) return icon;
+      }
+      return iconMap.default;
+    };
+
+    const formatDomain = (domain) => {
+      return domain.replace(/^www\./, '').split('.')[0];
+    };
+
+    const isProductive = website.category === 'productive';
+    const bgColorClass = isProductive ? 'bg-green-500/20' : 'bg-red-500/20';
+    const textColorClass = isProductive ? 'text-green-400' : 'text-red-400';
+    const timeColorClass = isProductive ? 'text-green-400' : 'text-red-400';
+    const categoryText = isProductive ? 'Productive' : 'Unproductive';
+
+    const appElement = document.createElement('div');
+    appElement.className = `bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
+                           hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group`;
+    
+    appElement.innerHTML = `
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 ${bgColorClass} rounded-lg flex items-center justify-center">
+          <span class="${textColorClass} text-sm">${getAppIcon(website.domain)}</span>
+        </div>
+        <span class="text-slate-200 font-medium">${formatDomain(website.domain)}</span>
+      </div>
+      <div class="text-right">
+        <span class="${timeColorClass} font-bold text-lg">${formatTime(website.time)}</span>
+        <div class="text-xs ${textColorClass}/70">${categoryText}</div>
+      </div>
+    `;
+
+    return appElement;
+  }
+
+  updateCatEmoji(stats) {
+    const catEmoji = document.querySelector('.cat-emoji');
+    if (!catEmoji) return;
+
+    let emoji = '😸';
+    
+    if (stats.catHealth < 30) {
+      emoji = '😿';
+    } else if (stats.catHealth < 50) {
+      emoji = '😾';
+    } else if (stats.productivityScore > 80) {
+      emoji = '😻';
+    } else if (stats.productivityScore > 60) {
+      emoji = '😸';
+    } else {
+      emoji = '🙀';
     }
+    
+    catEmoji.textContent = emoji;
+  }
 
-    updateCatDisplay(health, happiness) {
-        const catDisplay = document.getElementById('cat-display');
-        const catStatus = document.getElementById('cat-status');
-        const healthProgress = document.getElementById('health-progress');
-        const happinessProgress = document.getElementById('happiness-progress');
+  showLoadingState() {
+    const healthPercentage = document.querySelector('.health-percentage');
+    const productiveTime = document.querySelector('.productive-time');
+    const unproductiveTime = document.querySelector('.unproductive-time');
+    
+    if (healthPercentage) healthPercentage.textContent = 'Loading...';
+    if (productiveTime) productiveTime.textContent = 'Loading...';
+    if (unproductiveTime) unproductiveTime.textContent = 'Loading...';
+  }
 
-        // Update progress bars
-        if (healthProgress) healthProgress.style.width = `${health}%`;
-        if (happinessProgress) happinessProgress.style.width = `${happiness}%`;
+  async refreshData() {
+    await this.loadInitialData();
+  }
 
-        // Update cat emoji and status message
-        let catEmoji = '😺';
-        let statusMessage = 'Your cat is doing well!';
+  getFormattedStats(stats) {
+    return {
+      ...stats,
+      healthColor: this.getHealthColor(stats.catHealth),
+      productivityColor: this.getProductivityColor(stats.productivityScore)
+    };
+  }
 
-        if (happiness > 90 && health > 90) {
-            catEmoji = '😸';
-            statusMessage = 'Your cat is absolutely thriving! Keep up the great work!';
-        } else if (happiness > 70 && health > 70) {
-            catEmoji = '😺';
-            statusMessage = 'Your cat is happy and healthy!';
-        } else if (happiness > 50 && health > 50) {
-            catEmoji = '🐱';
-            statusMessage = 'Your cat is doing okay, but could use some productive time.';
-        } else if (happiness > 30 || health > 30) {
-            catEmoji = '😿';
-            statusMessage = 'Your cat is feeling sad. Try focusing on productive activities!';
-        } else {
-            catEmoji = '💀';
-            statusMessage = 'Your cat needs immediate attention! Time to be productive!';
-        }
+  getHealthColor(health) {
+    if (health < 30) return 'red';
+    if (health < 60) return 'yellow';
+    return 'green';
+  }
 
-        if (catDisplay) catDisplay.textContent = catEmoji;
-        if (catStatus) catStatus.textContent = statusMessage;
-    }
-
-    async loadDailyStats() {
-        try {
-            // Try to get stats from chrome extension
-            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                const response = await chrome.runtime.sendMessage({ type: 'GET_DAILY_STATS' });
-                if (response && response.dailyStats) {
-                    const today = new Date().toDateString();
-                    const todayStats = response.dailyStats[today] || { productive: 0, unproductive: 0 };
-                    this.updateStatsDisplay(todayStats);
-                    return;
-                }
-            }
-        } catch (error) {
-            console.log('Chrome extension not available, using default values');
-        }
-        
-        // Fallback to default values
-        this.updateStatsDisplay({ productive: 0, unproductive: 0 });
-    }
-
-    updateStatsDisplay(stats) {
-        const productiveHours = Math.floor(stats.productive / (1000 * 60 * 60));
-        const productiveMinutes = Math.floor((stats.productive % (1000 * 60 * 60)) / (1000 * 60));
-        
-        const unproductiveHours = Math.floor(stats.unproductive / (1000 * 60 * 60));
-        const unproductiveMinutes = Math.floor((stats.unproductive % (1000 * 60 * 60)) / (1000 * 60));
-
-        const productiveTimeElement = document.getElementById('productive-time');
-        const unproductiveTimeElement = document.getElementById('unproductive-time');
-        const productivityScoreElement = document.getElementById('productivity-score');
-
-        if (productiveTimeElement) {
-            productiveTimeElement.textContent = `${productiveHours}h ${productiveMinutes}m`;
-        }
-        if (unproductiveTimeElement) {
-            unproductiveTimeElement.textContent = `${unproductiveHours}h ${unproductiveMinutes}m`;
-        }
-
-        // Calculate productivity score
-        const totalTime = stats.productive + stats.unproductive;
-        const productivityScore = totalTime > 0 ? 
-            Math.round((stats.productive / totalTime) * 100) : 85;
-        
-        if (productivityScoreElement) {
-            productivityScoreElement.textContent = `${productivityScore}%`;
-        }
-    }
-
-    setupSearch() {
-        const searchForm = document.getElementById('search-form');
-        const searchInput = document.getElementById('search-input');
-        const searchSuggestions = document.getElementById('search-suggestions');
-        
-        if (!searchForm || !searchInput) return;
-
-        // Handle form submission
-        searchForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const query = searchInput.value.trim();
-            if (query) {
-                this.handleSearch(query);
-            }
-        });
-
-        // Input suggestions
-        searchInput.addEventListener('input', (e) => {
-            this.showSuggestions(e.target.value);
-        });
-
-        // Hide suggestions when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.search-container')) {
-                if (searchSuggestions) searchSuggestions.style.display = 'none';
-            }
-        });
-
-        // Focus search input on page load
-        setTimeout(() => {
-            searchInput.focus();
-        }, 100);
-
-        // Focus search input when pressing '/' key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === '/' && e.target !== searchInput) {
-                e.preventDefault();
-                searchInput.focus();
-            }
-        });
-    }
-
-    handleSearch(query) {
-        console.log('Searching for:', query);
-        
-        // Hide suggestions
-        const searchSuggestions = document.getElementById('search-suggestions');
-        if (searchSuggestions) searchSuggestions.style.display = 'none';
-        
-        // Check if it's a URL
-        if (this.isURL(query)) {
-            const url = query.startsWith('http') ? query : 'https://' + query;
-            console.log('Navigating to URL:', url);
-            window.location.href = url;
-        } else {
-            // Search with Google
-            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-            console.log('Searching with Google:', searchUrl);
-            window.location.href = searchUrl;
-        }
-    }
-
-    isURL(str) {
-        // Check for common URL patterns
-        const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
-        
-        // Also check if it contains a dot and no spaces (simple domain check)
-        const simpleDomainCheck = str.includes('.') && !str.includes(' ') && str.length > 3;
-        
-        return urlPattern.test(str) || simpleDomainCheck;
-    }
-
-    showSuggestions(query) {
-        const searchSuggestions = document.getElementById('search-suggestions');
-        
-        if (!searchSuggestions || !query.trim()) {
-            if (searchSuggestions) searchSuggestions.style.display = 'none';
-            return;
-        }
-
-        const suggestions = this.popularSites.filter(site => 
-            site.toLowerCase().includes(query.toLowerCase())
-        ).slice(0, 5);
-
-        if (suggestions.length > 0) {
-            searchSuggestions.innerHTML = suggestions.map(site => 
-                `<div class="search-suggestion" data-site="${site}">${site}</div>`
-            ).join('');
-            
-            // Add event listeners to each suggestion
-            searchSuggestions.querySelectorAll('.search-suggestion').forEach(suggestion => {
-                suggestion.addEventListener('click', (e) => {
-                    const site = e.target.getAttribute('data-site');
-                    const searchInput = document.getElementById('search-input');
-                    if (searchInput) {
-                        searchInput.value = site;
-                        this.handleSearch(site);
-                    }
-                });
-            });
-            
-            searchSuggestions.style.display = 'block';
-        } else {
-            searchSuggestions.style.display = 'none';
-        }
-    }
+  getProductivityColor(score) {
+    if (score < 40) return 'red';
+    if (score < 70) return 'yellow';
+    return 'green';
+  }
 }
 
-// Initialize the new tab page
-new NewTabPage();
+// Initialize dashboard when the script loads
+const dashboard = new ProductivityDashboard();
+
+// Make dashboard available globally for debugging
+window.productivityDashboard = dashboard;

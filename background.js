@@ -2,47 +2,63 @@ class PurrductiveBackground {
   constructor() {
     this.init();
     this.setupEventListeners();
-    // Popup configuration with thresholds
+    this.broadcastTimeout = null;
+    
+    // FIXED: Reduced popup frequency and simplified thresholds
     this.popupConfig = {
-      healthThreshold: 30,
-      happinessThreshold: 30,
-      unproductiveTimeThreshold: 2 * 60 * 60 * 1000, // 2 hours in milliseconds
-      productivityScoreThreshold: 40,
-      showCooldown: 5 * 60 * 1000, // Don't show again for 5 minutes
+      healthThreshold: 25, // Lower threshold so it triggers less often
+      showCooldown: 10 * 60 * 1000, // Increased to 10 minutes cooldown
       lastShownTime: 0
     };
   }
 
   init() {
-    // Initialize default settings
     chrome.runtime.onInstalled.addListener(() => {
       this.setDefaultSettings();
       this.createAlarms();
+    });
+    
+    chrome.runtime.onStartup.addListener(() => {
+      this.initializeSession();
+    });
+  }
+
+  async initializeSession() {
+    const now = Date.now();
+    await chrome.storage.local.set({
+      sessionStartTime: now,
+      lastActiveTime: now,
+      lastActiveDomain: null
     });
   }
 
   async setDefaultSettings() {
     const defaultSettings = {
-      catHealth: 80,
+      catHealth: 100, // FIXED: Start at 100 instead of 80
       catHappiness: 70,
-      currentScreenTime: 6, // hours
-      desiredScreenTime: 4, // hours
+      currentScreenTime: 6,
+      desiredScreenTime: 4,
       mutedUntil: null,
       totalProductiveTime: 0,
       totalUnproductiveTime: 0,
-      popupLastShown: 0, // Track when popup was last shown
+      popupLastShown: 0,
+      sessionStartTime: Date.now(),
+      lastActiveTime: Date.now(),
+      lastActiveDomain: null,
       websiteCategories: {
         productive: [
           'news.google.com', 'bbc.com', 'reuters.com', 'npr.org',
           'linkedin.com', 'indeed.com', 'glassdoor.com',
           'udemy.com', 'coursera.org', 'khanacademy.org',
           'docs.google.com', 'sheets.google.com', 'github.com',
-          'stackoverflow.com', 'medium.com'
+          'stackoverflow.com', 'medium.com', 'notion.so',
+          'figma.com', 'canva.com', 'trello.com', 'slack.com', 'claude.ai', 'chatgpt.com'
         ],
         unproductive: [
           'instagram.com', 'tiktok.com', 'youtube.com',
           'facebook.com', 'twitter.com', 'reddit.com',
-          'twitch.tv', 'netflix.com', 'hulu.com'
+          'twitch.tv', 'netflix.com', 'hulu.com', 'tinder.com',
+          'snapchat.com', 'pinterest.com'
         ]
       },
       dailyStats: {},
@@ -53,7 +69,6 @@ class PurrductiveBackground {
   }
 
   setupEventListeners() {
-    // Track tab changes
     chrome.tabs.onActivated.addListener((activeInfo) => {
       this.handleTabChange(activeInfo.tabId);
     });
@@ -64,28 +79,44 @@ class PurrductiveBackground {
       }
     });
 
-    // Handle alarms
+    chrome.windows.onFocusChanged.addListener((windowId) => {
+      if (windowId === chrome.windows.WINDOW_ID_NONE) {
+        this.pauseTracking();
+      } else {
+        this.resumeTracking();
+      }
+    });
+
     chrome.alarms.onAlarm.addListener((alarm) => {
       if (alarm.name === 'updateCatStatus') {
         this.updateCatStatus();
       } else if (alarm.name === 'checkThresholds') {
         this.checkPopupThresholds();
+      } else if (alarm.name === 'broadcastStats') {
+        this.broadcastStatsToAllTabs();
       }
     });
 
-    // Handle messages from content scripts
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       this.handleMessage(message, sender, sendResponse);
-      return true; // Keep message channel open for async response
+      return true;
     });
   }
 
   createAlarms() {
-    // Update cat status every 5 minutes
-    chrome.alarms.create('updateCatStatus', { periodInMinutes: 5 });
-    
-    // Check popup thresholds every 2 minutes
-    chrome.alarms.create('checkThresholds', { periodInMinutes: 2 });
+    // FIXED: Increased intervals to reduce popup frequency
+    chrome.alarms.create('updateCatStatus', { periodInMinutes: 5 }); // Was 3
+    chrome.alarms.create('checkThresholds', { periodInMinutes: 15 }); // Was 5
+    chrome.alarms.create('broadcastStats', { periodInMinutes: 2 }); // Was 1
+  }
+
+  async pauseTracking() {
+    await this.updateTimeTracking(null, null, true);
+  }
+
+  async resumeTracking() {
+    const now = Date.now();
+    await chrome.storage.local.set({ lastActiveTime: now });
   }
 
   async handleTabChange(tabId, url = null) {
@@ -98,18 +129,31 @@ class PurrductiveBackground {
       }
     }
 
+    if (!url || url.startsWith('chrome://') || url.startsWith('chrome-extension://') || 
+        url.startsWith('moz-extension://') || url.startsWith('about:') || url === 'about:blank') {
+      await this.updateTimeTracking(null, null, true);
+      return;
+    }
+
     const domain = this.extractDomain(url);
+    if (!domain || domain === '') {
+      await this.updateTimeTracking(null, null, true);
+      return;
+    }
+
     const category = await this.categorizeWebsite(domain);
-    
-    // Update time tracking
     await this.updateTimeTracking(domain, category);
     
-    // Send message to content script
     chrome.tabs.sendMessage(tabId, {
       type: 'SITE_CATEGORY_UPDATE',
       category: category,
       domain: domain
-    }).catch(() => {}); // Ignore errors if content script not loaded
+    }).catch(() => {});
+    
+    clearTimeout(this.broadcastTimeout);
+    this.broadcastTimeout = setTimeout(() => {
+      this.broadcastStatsToAllTabs();
+    }, 1000);
   }
 
   extractDomain(url) {
@@ -123,57 +167,131 @@ class PurrductiveBackground {
 
   async categorizeWebsite(domain) {
     const data = await chrome.storage.local.get(['websiteCategories']);
-    const categories = data.websiteCategories;
+    const categories = data.websiteCategories || { productive: [], unproductive: [] };
     
-    if (categories.productive.some(site => domain.includes(site))) {
-      return 'productive';
-    } else if (categories.unproductive.some(site => domain.includes(site))) {
-      return 'unproductive';
+    console.log('Categorizing domain:', domain);
+    console.log('Categories:', categories);
+    
+    // Check productive sites
+    for (const site of categories.productive) {
+      if (domain.includes(site)) {
+        console.log(`Domain ${domain} categorized as PRODUCTIVE (matched: ${site})`);
+        return 'productive';
+      }
     }
+    
+    // Check unproductive sites  
+    for (const site of categories.unproductive) {
+      if (domain.includes(site)) {
+        console.log(`Domain ${domain} categorized as UNPRODUCTIVE (matched: ${site})`);
+        return 'unproductive';
+      }
+    }
+    
+    console.log(`Domain ${domain} categorized as NEUTRAL (no match found)`);
     return 'neutral';
   }
 
-  async updateTimeTracking(domain, category) {
+  async updateTimeTracking(domain, category, isPausing = false) {
     const now = Date.now();
     const today = new Date().toDateString();
     
+    console.log('updateTimeTracking called:', { domain, category, isPausing, today });
+    
     const data = await chrome.storage.local.get([
-      'dailyStats', 'lastActiveTime', 'lastActiveDomain', 'totalProductiveTime', 'totalUnproductiveTime'
+      'dailyStats', 'lastActiveTime', 'lastActiveDomain', 'totalProductiveTime', 'totalUnproductiveTime',
+      'sessionStartTime'
     ]);
+    
+    console.log('Current tracking data:', {
+      lastActiveDomain: data.lastActiveDomain,
+      lastActiveTime: data.lastActiveTime ? new Date(data.lastActiveTime).toLocaleTimeString() : 'null',
+      dailyStats: data.dailyStats[today]
+    });
     
     // Initialize daily stats if needed
     if (!data.dailyStats[today]) {
       data.dailyStats[today] = {
         productive: 0,
         unproductive: 0,
-        websites: {}
+        neutral: 0,
+        websites: {},
+        sessions: []
       };
+      console.log('Initialized daily stats for:', today);
     }
 
     // Calculate time spent on previous site
-    if (data.lastActiveTime && data.lastActiveDomain) {
-      const timeSpent = Math.min(now - data.lastActiveTime, 30 * 60 * 1000); // Cap at 30 minutes
-      const prevCategory = await this.categorizeWebsite(data.lastActiveDomain);
+    if (data.lastActiveTime && data.lastActiveDomain && data.lastActiveDomain !== '') {
+      const timeSpent = Math.min(now - data.lastActiveTime, 10 * 60 * 1000);
       
-      // Update daily stats
-      if (prevCategory === 'productive') {
-        data.dailyStats[today].productive += timeSpent;
-        data.totalProductiveTime = (data.totalProductiveTime || 0) + timeSpent;
-      } else if (prevCategory === 'unproductive') {
-        data.dailyStats[today].unproductive += timeSpent;
-        data.totalUnproductiveTime = (data.totalUnproductiveTime || 0) + timeSpent;
-      }
+      console.log('Time calculation:', {
+        timeSpent: timeSpent,
+        timeSpentFormatted: Math.round(timeSpent/1000) + 's',
+        previousDomain: data.lastActiveDomain
+      });
       
-      // Update website-specific stats
-      if (!data.dailyStats[today].websites[data.lastActiveDomain]) {
-        data.dailyStats[today].websites[data.lastActiveDomain] = 0;
+      // Only count if time spent is reasonable (more than 5 seconds, less than 10 minutes)
+      if (timeSpent > 5000 && timeSpent <= 10 * 60 * 1000) {
+        const prevCategory = await this.categorizeWebsite(data.lastActiveDomain);
+        
+        console.log('Recording time:', {
+          domain: data.lastActiveDomain,
+          category: prevCategory,
+          timeSpent: Math.round(timeSpent/1000) + 's'
+        });
+        
+        // FIXED: Proper aggregation of productive/unproductive time
+        if (prevCategory === 'productive') {
+          data.dailyStats[today].productive += timeSpent;
+          data.totalProductiveTime = (data.totalProductiveTime || 0) + timeSpent;
+          console.log('Added to PRODUCTIVE:', Math.round(timeSpent/1000) + 's');
+        } else if (prevCategory === 'unproductive') {
+          data.dailyStats[today].unproductive += timeSpent;
+          data.totalUnproductiveTime = (data.totalUnproductiveTime || 0) + timeSpent;
+          console.log('Added to UNPRODUCTIVE:', Math.round(timeSpent/1000) + 's');
+        } else {
+          data.dailyStats[today].neutral += timeSpent;
+          console.log('Added to NEUTRAL:', Math.round(timeSpent/1000) + 's');
+        }
+        
+        if (!data.dailyStats[today].websites[data.lastActiveDomain]) {
+          data.dailyStats[today].websites[data.lastActiveDomain] = {
+            time: 0,
+            category: prevCategory,
+            sessions: 0
+          };
+        }
+        data.dailyStats[today].websites[data.lastActiveDomain].time += timeSpent;
+        data.dailyStats[today].websites[data.lastActiveDomain].sessions += 1;
+        data.dailyStats[today].websites[data.lastActiveDomain].category = prevCategory;
+        
+        data.dailyStats[today].sessions.push({
+          domain: data.lastActiveDomain,
+          category: prevCategory,
+          startTime: data.lastActiveTime,
+          endTime: now,
+          duration: timeSpent
+        });
+        
+        console.log('Updated totals:', {
+          totalProductive: Math.round((data.dailyStats[today].productive)/1000) + 's',
+          totalUnproductive: Math.round((data.dailyStats[today].unproductive)/1000) + 's'
+        });
+      } else {
+        console.log('Time spent too short or too long, not recording:', Math.round(timeSpent/1000) + 's');
       }
-      data.dailyStats[today].websites[data.lastActiveDomain] += timeSpent;
     }
 
-    // Update current tracking
-    data.lastActiveTime = now;
-    data.lastActiveDomain = domain;
+    if (!isPausing && domain && domain !== '') {
+      data.lastActiveTime = now;
+      data.lastActiveDomain = domain;
+      console.log('Now tracking:', domain);
+    } else if (isPausing) {
+      data.lastActiveTime = null;
+      data.lastActiveDomain = null;
+      console.log('Paused tracking');
+    }
     
     await chrome.storage.local.set(data);
   }
@@ -181,84 +299,149 @@ class PurrductiveBackground {
   async updateCatStatus() {
     const data = await chrome.storage.local.get([
       'catHealth', 'catHappiness', 'totalProductiveTime', 'totalUnproductiveTime',
-      'currentScreenTime', 'desiredScreenTime'
+      'currentScreenTime', 'desiredScreenTime', 'dailyStats'
     ]);
 
-    const totalTime = (data.totalProductiveTime || 0) + (data.totalUnproductiveTime || 0);
-    const productiveRatio = totalTime > 0 ? (data.totalProductiveTime || 0) / totalTime : 0.5;
+    const today = new Date().toDateString();
+    const todayStats = data.dailyStats[today] || { productive: 0, unproductive: 0 };
     
-    // Calculate new cat status based on productivity ratio and screen time goals
-    const targetRatio = data.desiredScreenTime / data.currentScreenTime;
-    const healthDelta = (productiveRatio - 0.5) * 10;
-    const happinessDelta = (productiveRatio >= targetRatio ? 5 : -3);
+    const totalTime = todayStats.productive + todayStats.unproductive;
+    const productiveRatio = totalTime > 0 ? todayStats.productive / totalTime : 0.5;
+    
+    // FIXED: More gradual health changes
+    let healthDelta = (productiveRatio - 0.5) * 3; // Reduced from 5
+    let happinessDelta = (productiveRatio >= 0.6 ? 2 : -1); // Reduced penalties
+    
+    if (productiveRatio >= 0.7) {
+      healthDelta += 1; // Reduced bonus
+      happinessDelta += 1;
+    }
+    
+    const totalHours = totalTime / (1000 * 60 * 60);
+    if (totalHours > data.currentScreenTime) {
+      healthDelta -= 2; // Reduced penalty
+      happinessDelta -= 2;
+    }
 
-    const newHealth = Math.max(0, Math.min(100, data.catHealth + healthDelta));
-    const newHappiness = Math.max(0, Math.min(100, data.catHappiness + happinessDelta));
+    const newHealth = Math.max(0, Math.min(100, (data.catHealth || 80) + healthDelta));
+    const newHappiness = Math.max(0, Math.min(100, (data.catHappiness || 70) + happinessDelta));
 
     await chrome.storage.local.set({
       catHealth: newHealth,
       catHappiness: newHappiness
     });
 
-    // Check if we need to show popup after status update
     await this.checkPopupThresholds();
+    await this.broadcastStatsToAllTabs();
   }
 
-  // NEW METHOD: Check if popup should be shown based on thresholds
-  async checkPopupThresholds() {
+  async broadcastStatsToAllTabs() {
+    try {
+      const stats = await this.getAllStats();
+      const tabs = await chrome.tabs.query({});
+      
+      for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'STATS_UPDATE',
+          stats: stats
+        }).catch(() => {});
+      }
+    } catch (error) {
+      console.log('Error broadcasting stats:', error);
+    }
+  }
+
+  // FIXED: All percentages are now whole numbers
+  async getAllStats() {
     const data = await chrome.storage.local.get([
-      'catHealth', 'catHappiness', 'dailyStats', 'popupLastShown', 'mutedUntil'
+      'catHealth', 'catHappiness', 'dailyStats', 'totalProductiveTime', 
+      'totalUnproductiveTime', 'currentScreenTime', 'desiredScreenTime'
     ]);
 
-    // Don't show if notifications are muted
+    const today = new Date().toDateString();
+    const todayStats = data.dailyStats[today] || { 
+      productive: 0, 
+      unproductive: 0, 
+      neutral: 0, 
+      websites: {} 
+    };
+
+    // FIXED: Proper productivity calculation with whole numbers
+    const totalTime = todayStats.productive + todayStats.unproductive;
+    const productivityScore = totalTime > 0 ? 
+      Math.round((todayStats.productive / totalTime) * 100) : 100;
+
+    const websites = Object.entries(todayStats.websites || {})
+      .map(([domain, info]) => ({
+        domain,
+        time: info.time,
+        category: info.category,
+        sessions: info.sessions
+      }))
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 10);
+
+    const formatTime = (ms) => {
+      const hours = Math.floor(ms / (1000 * 60 * 60));
+      const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes}m`;
+    };
+
+    return {
+      catHealth: Math.round(data.catHealth || 100), // FIXED: Default to 100
+      catHappiness: Math.round(data.catHappiness || 70),
+      productivityScore, // Already rounded above
+      productiveTime: formatTime(todayStats.productive),
+      unproductiveTime: formatTime(todayStats.unproductive),
+      totalTime: formatTime(totalTime),
+      productiveTimeRaw: todayStats.productive,
+      unproductiveTimeRaw: todayStats.unproductive,
+      totalTimeRaw: totalTime,
+      websites,
+      currentScreenTime: data.currentScreenTime || 6,
+      desiredScreenTime: data.desiredScreenTime || 4,
+      timestamp: Date.now()
+    };
+  }
+
+  // FIXED: Simplified popup threshold logic - only health matters
+  async checkPopupThresholds() {
+    const data = await chrome.storage.local.get([
+      'catHealth', 'popupLastShown', 'mutedUntil'
+    ]);
+
     if (data.mutedUntil && Date.now() < data.mutedUntil) {
       return;
     }
 
-    // Don't show if popup was shown recently (cooldown period)
     const now = Date.now();
     if (data.popupLastShown && (now - data.popupLastShown) < this.popupConfig.showCooldown) {
       return;
     }
 
-    const today = new Date().toDateString();
-    const todayStats = data.dailyStats[today] || { productive: 0, unproductive: 0 };
-    
-    // Calculate productivity score
-    const totalTime = todayStats.productive + todayStats.unproductive;
-    const productivityScore = totalTime > 0 ? 
-      Math.round((todayStats.productive / totalTime) * 100) : 100;
-
-    // Check thresholds
-    const shouldShowPopup = (
-      data.catHealth < this.popupConfig.healthThreshold ||
-      data.catHappiness < this.popupConfig.happinessThreshold ||
-      todayStats.unproductive > this.popupConfig.unproductiveTimeThreshold ||
-      productivityScore < this.popupConfig.productivityScoreThreshold
-    );
+    // FIXED: Only trigger on low health to reduce frequency
+    const shouldShowPopup = data.catHealth < this.popupConfig.healthThreshold;
 
     if (shouldShowPopup) {
       await this.triggerPopupOnActiveTab();
-      // Update last shown time
       await chrome.storage.local.set({ popupLastShown: now });
     }
   }
 
-  // NEW METHOD: Show popup on the active tab
   async triggerPopupOnActiveTab() {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs[0]) {
-        // Send message to content script to show popup
         chrome.tabs.sendMessage(tabs[0].id, {
           type: 'SHOW_THRESHOLD_POPUP'
         }).catch(() => {
-          // If content script not loaded, inject it first
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             files: ['content-script.js']
           }).then(() => {
-            // Try sending message again after injection
             setTimeout(() => {
               chrome.tabs.sendMessage(tabs[0].id, {
                 type: 'SHOW_THRESHOLD_POPUP'
@@ -272,10 +455,7 @@ class PurrductiveBackground {
     }
   }
 
-  // UPDATED METHOD: Remove old unproductive time checking
   async checkUnproductiveTime() {
-    // This method is now replaced by checkPopupThresholds
-    // Keep for backward compatibility but make it call the new method
     await this.checkPopupThresholds();
   }
 
@@ -286,8 +466,13 @@ class PurrductiveBackground {
         sendResponse(catData);
         break;
         
+      case 'GET_ALL_STATS':
+        const allStats = await this.getAllStats();
+        sendResponse(allStats);
+        break;
+        
       case 'MUTE_NOTIFICATIONS':
-        const muteUntil = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+        const muteUntil = Date.now() + (24 * 60 * 60 * 1000);
         await chrome.storage.local.set({ mutedUntil: muteUntil });
         sendResponse({ success: true });
         break;
@@ -302,27 +487,28 @@ class PurrductiveBackground {
         sendResponse({ success: true });
         break;
 
-      // NEW: Handle popup threshold updates
       case 'UPDATE_POPUP_THRESHOLDS':
         this.popupConfig = { ...this.popupConfig, ...message.thresholds };
         sendResponse({ success: true });
         break;
 
-      // NEW: Handle popup dismissal
       case 'POPUP_DISMISSED':
         await chrome.storage.local.set({ popupLastShown: Date.now() });
         sendResponse({ success: true });
         break;
 
-      // NEW: Force check thresholds (for testing)
       case 'FORCE_CHECK_THRESHOLDS':
         await this.checkPopupThresholds();
+        sendResponse({ success: true });
+        break;
+        
+      case 'REQUEST_STATS_BROADCAST':
+        await this.broadcastStatsToAllTabs();
         sendResponse({ success: true });
         break;
     }
   }
 
-  // NEW METHOD: Update popup configuration
   updatePopupConfig(newConfig) {
     this.popupConfig = { ...this.popupConfig, ...newConfig };
   }
