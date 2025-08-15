@@ -13,91 +13,558 @@
         body {
             font-family: 'Inter', sans-serif;
         }
+        
+        /* Navigation styles */
+        .nav-button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .nav-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .nav-button.active {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+        
+        /* Page styles */
+        .page {
+            display: none;
+        }
+        
+        .page.active {
+            display: block;
+        }
+        
+        /* History page styles */
+        .history-chart {
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .history-item {
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .history-item:hover {
+            background: rgba(51, 65, 85, 0.3);
+        }
+        
+        /* Settings page styles */
+        .settings-section {
+            background: rgba(30, 41, 59, 0.3);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .settings-input {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(51, 65, 85, 0.7);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            color: white;
+            width: 100%;
+            font-size: 14px;
+        }
+        
+        .settings-input:focus {
+            outline: none;
+            border-color: rgb(59, 130, 246);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        
+        .website-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(51, 65, 85, 0.5);
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            background: rgba(30, 41, 59, 0.3);
+        }
+        
+        .website-tag {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: rgb(96, 165, 250);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin: 2px;
+            cursor: pointer;
+        }
+        
+        .website-tag.unproductive {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: rgb(248, 113, 113);
+        }
+        
+        .save-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .save-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen flex flex-col items-center justify-start p-6 text-white">
     
     <!-- Header -->
-    <div class="flex flex-col items-center mb-8">
+    <div class="flex flex-col items-center mb-6">
         <div class="text-5xl animate-bounce mb-3 cat-emoji">🐱</div>
         <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             Productivity Dashboard
         </h1>
     </div>
 
-    <!-- Search Bar -->
-    <div class="relative w-full max-w-lg mb-8">
-        <input
-            id="searchInput"
-            type="text"
-            placeholder="Search apps, analyze productivity..."
-            class="w-full py-4 px-6 pl-12 bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl 
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                   hover:bg-slate-700/50 hover:border-blue-500/50 transition-all duration-300
-                   text-white placeholder-slate-400 text-sm font-medium"
-        />
-        <div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-            <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
-            </svg>
+    <!-- Navigation -->
+    <div class="flex gap-4 mb-8">
+        <button class="nav-button active" data-page="dashboard">Dashboard</button>
+        <button class="nav-button" data-page="history">History</button>
+        <button class="nav-button" data-page="settings">Settings</button>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div id="dashboard-page" class="page active w-full max-w-lg">
+        <!-- Search Bar -->
+        <div class="relative w-full mb-8">
+            <input
+                id="searchInput"
+                type="text"
+                placeholder="Search Google or type a URL"
+                class="w-full py-4 px-6 pl-12 bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl 
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                       hover:bg-slate-700/50 hover:border-blue-500/50 transition-all duration-300
+                       text-white placeholder-slate-400 text-sm font-medium"
+            />
+            <div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+                </svg>
+            </div>
         </div>
-    </div>
 
-<!-- Health Bar -->
-<div class="w-full max-w-lg mb-8">
-  <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5">
-    <div class="flex justify-between items-center mb-3">
-      <label class="text-sm font-semibold text-slate-300">Health Score</label>
-      <span class="text-sm font-bold text-green-400 health-percentage">80%</span>
-    </div>
-<div class="w-full h-3 bg-slate-700 rounded-full overflow-hidden health-bar">
-  <div class="health-fill h-full transition-all duration-700 ease-out" style="width: 0%; background: linear-gradient(to right, #10b981, #059669); border-radius: inherit;"></div>
-</div>
-
-    </div>
-    </div>
-  </div>
-</div>
-
-
-    <!-- Productivity & Time Stats -->
-    <div class="grid grid-cols-2 gap-6 w-full max-w-lg mb-8">
-        <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
-            <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Productive Time</p>
-            <p class="text-2xl font-bold text-green-400 productive-time">Loading...</p>
-            <div class="mt-2 text-xs text-green-500 productive-change">Calculating...</div>
-        </div>
-        <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
-            <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Unproductive Time</p>
-            <p class="text-2xl font-bold text-red-400 unproductive-time">Loading...</p>
-            <div class="mt-2 text-xs text-red-500 unproductive-change">Calculating...</div>
-        </div>
-    </div>
-
-    <!-- App Usage -->
-    <div class="w-full max-w-lg">
-        <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
-            <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-            App Usage Analytics
-        </h3>
-        <div class="space-y-3 app-usage-container">
-            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
-                        hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-gray-500/20 rounded-lg flex items-center justify-center">
-                        <span class="text-gray-400 text-sm">⏳</span>
-                    </div>
-                    <span class="text-slate-200 font-medium">Loading apps...</span>
+        <!-- Health Bar -->
+        <div class="w-full mb-8">
+            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-5">
+                <div class="flex justify-between items-center mb-3">
+                    <label class="text-sm font-semibold text-slate-300">Health Score</label>
+                    <span class="text-sm font-bold text-green-400 health-percentage">100%</span>
                 </div>
-                <div class="text-right">
-                    <span class="text-gray-400 font-bold text-lg">--</span>
-                    <div class="text-xs text-gray-500/70">Please wait</div>
+                <div class="w-full h-3 bg-slate-700 rounded-full overflow-hidden health-bar">
+                    <div class="health-fill h-full transition-all duration-700 ease-out" style="width: 0%; background: linear-gradient(to right, #10b981, #059669); border-radius: inherit;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Productivity & Time Stats -->
+        <div class="grid grid-cols-2 gap-6 w-full mb-8">
+            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Productive Time</p>
+                <p class="text-2xl font-bold text-green-400 productive-time">Loading...</p>
+                <div class="mt-2 text-xs text-green-500 productive-change">Calculating...</div>
+            </div>
+            <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 hover:bg-slate-700/30 transition-all duration-300">
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Unproductive Time</p>
+                <p class="text-2xl font-bold text-red-400 unproductive-time">Loading...</p>
+                <div class="mt-2 text-xs text-red-500 unproductive-change">Calculating...</div>
+            </div>
+        </div>
+
+        <!-- App Usage -->
+        <div class="w-full">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
+                <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                App Usage Analytics
+            </h3>
+            <div class="space-y-3 app-usage-container">
+                <div class="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 
+                            hover:bg-slate-700/30 transition-all duration-300 flex justify-between items-center group">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-gray-500/20 rounded-lg flex items-center justify-center">
+                            <span class="text-gray-400 text-sm">⏳</span>
+                        </div>
+                        <span class="text-slate-200 font-medium">Loading apps...</span>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-gray-400 font-bold text-lg">--</span>
+                        <div class="text-xs text-gray-500/70">Please wait</div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- History Page -->
+    <div id="history-page" class="page w-full max-w-4xl">
+        <h2 class="text-xl font-bold text-slate-200 mb-6">Screen Time History</h2>
+        
+        <!-- Chart Placeholder -->
+        <div class="history-chart mb-6">
+            <h3 class="text-lg font-semibold text-slate-300 mb-4">Last 7 Days Overview</h3>
+            <div id="history-chart" class="h-64 flex items-center justify-center">
+                <span class="text-slate-400">Loading chart...</span>
+            </div>
+        </div>
+        
+        <!-- Historical Data List -->
+        <div id="history-list">
+            <div class="history-item">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-300 font-medium">Loading historical data...</span>
+                    <span class="text-slate-400">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Page -->
+    <div id="settings-page" class="page w-full max-w-2xl">
+        <h2 class="text-xl font-bold text-slate-200 mb-6">Settings</h2>
+        
+        <!-- Screen Time Goal -->
+        <div class="settings-section">
+            <h3 class="text-lg font-semibold text-slate-300 mb-4">Daily Screen Time Goal</h3>
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">Target hours per day</label>
+                <input type="number" id="screenTimeGoal" class="settings-input" min="1" max="24" step="0.5" placeholder="6">
+                <p class="text-xs text-slate-500 mt-2">Your cat's health will decrease faster if you exceed this goal</p>
+            </div>
+        </div>
+
+        <!-- Website Categories -->
+        <div class="settings-section">
+            <h3 class="text-lg font-semibold text-slate-300 mb-4">Website Categories</h3>
+            
+            <!-- Productive Websites -->
+            <div class="mb-6">
+                <label class="block text-sm text-slate-400 mb-2">Productive Websites</label>
+                <div class="website-list mb-2" id="productive-websites">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="new-productive-site" class="settings-input flex-1" placeholder="Add website (e.g., github.com)">
+                    <button id="add-productive-btn" class="save-button px-4">Add</button>
+                </div>
+            </div>
+            
+            <!-- Unproductive Websites -->
+            <div class="mb-6">
+                <label class="block text-sm text-slate-400 mb-2">Unproductive/Distracting Websites</label>
+                <div class="website-list mb-2" id="unproductive-websites">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="new-unproductive-site" class="settings-input flex-1" placeholder="Add website (e.g., instagram.com)">
+                    <button id="add-unproductive-btn" class="save-button px-4">Add</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="text-center">
+            <button id="save-settings-btn" class="save-button">Save All Settings</button>
+        </div>
+    </div>
+
     <!-- JS -->
     <script src="newtab.js"></script>
-</body>
-</html>
+    <script>
+        // Navigation functionality
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            
+            // Remove active class from all nav buttons
+            document.querySelectorAll('.nav-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected page
+            document.getElementById(pageId + '-page').classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+            
+            // Load page-specific content
+            if (pageId === 'history') {
+                loadHistoryData();
+            } else if (pageId === 'settings') {
+                loadSettings();
+            }
+        }
+
+        // Settings functionality
+        let currentSettings = {};
+
+        async function loadSettings() {
+            try {
+                const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+                currentSettings = settings;
+                
+                // Populate screen time goal
+                document.getElementById('screenTimeGoal').value = settings.dailyScreenTimeGoal || 6;
+                
+                // Populate website categories
+                populateWebsiteList('productive', settings.websiteCategories?.productive || []);
+                populateWebsiteList('unproductive', settings.websiteCategories?.unproductive || []);
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        function populateWebsiteList(type, websites) {
+            const container = document.getElementById(type + '-websites');
+            container.innerHTML = '';
+            
+            websites.forEach(website => {
+                const tag = document.createElement('span');
+                tag.className = `website-tag ${type === 'unproductive' ? 'unproductive' : ''}`;
+                tag.textContent = website;
+                tag.onclick = () => removeWebsite(type, website);
+                tag.title = 'Click to remove';
+                container.appendChild(tag);
+            });
+        }
+
+        function addWebsite(type) {
+            const input = document.getElementById('new-' + type + '-site');
+            const website = input.value.trim().toLowerCase();
+            
+            if (!website) return;
+            
+            // Remove common prefixes
+            const cleanWebsite = website.replace(/^(https?:\/\/)?(www\.)?/, '');
+            
+            if (!currentSettings.websiteCategories) {
+                currentSettings.websiteCategories = { productive: [], unproductive: [] };
+            }
+            
+            // Remove from other category if exists
+            const otherType = type === 'productive' ? 'unproductive' : 'productive';
+            currentSettings.websiteCategories[otherType] = currentSettings.websiteCategories[otherType].filter(site => site !== cleanWebsite);
+            
+            // Add to current category if not already there
+            if (!currentSettings.websiteCategories[type].includes(cleanWebsite)) {
+                currentSettings.websiteCategories[type].push(cleanWebsite);
+            }
+            
+            // Update display
+            populateWebsiteList('productive', currentSettings.websiteCategories.productive);
+            populateWebsiteList('unproductive', currentSettings.websiteCategories.unproductive);
+            
+            input.value = '';
+        }
+
+        function removeWebsite(type, website) {
+            if (!currentSettings.websiteCategories) return;
+            
+            currentSettings.websiteCategories[type] = currentSettings.websiteCategories[type].filter(site => site !== website);
+            populateWebsiteList(type, currentSettings.websiteCategories[type]);
+        }
+
+        async function saveSettings() {
+            try {
+                const screenTimeGoal = parseFloat(document.getElementById('screenTimeGoal').value) || 6;
+                
+                await chrome.runtime.sendMessage({
+                    type: 'UPDATE_SETTINGS',
+                    settings: {
+                        dailyScreenTimeGoal: screenTimeGoal
+                    }
+                });
+                
+                await chrome.runtime.sendMessage({
+                    type: 'UPDATE_WEBSITE_CATEGORIES',
+                    categories: currentSettings.websiteCategories
+                });
+                
+                // Show success feedback
+                const saveButton = event.target;
+                const originalText = saveButton.textContent;
+                saveButton.textContent = 'Saved!';
+                saveButton.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                
+                setTimeout(() => {
+                    saveButton.textContent = originalText;
+                    saveButton.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error saving settings:', error);
+            }
+        }
+
+        // History functionality
+        async function loadHistoryData() {
+            try {
+                const historyData = await chrome.runtime.sendMessage({ type: 'GET_HISTORICAL_DATA' });
+                displayHistoryChart(historyData);
+                displayHistoryList(historyData);
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        function displayHistoryChart(data) {
+            const chartContainer = document.getElementById('history-chart');
+            const historicalData = data.historicalData || {};
+            
+            // Get last 7 days
+            const last7Days = [];
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toDateString();
+                last7Days.push({
+                    date: dateStr,
+                    shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    data: historicalData[dateStr] || { productive: 0, unproductive: 0, totalTime: 0, healthScore: 100 }
+                });
+            }
+            
+            // Simple ASCII-style chart
+            let chartHTML = '<div class="flex items-end justify-between h-48 border-b border-slate-600 px-4">';
+            
+            const maxTime = Math.max(...last7Days.map(day => day.data.totalTime)) || 1;
+            
+            last7Days.forEach(day => {
+                const totalHours = day.data.totalTime / (1000 * 60 * 60);
+                const productiveHours = day.data.productive / (1000 * 60 * 60);
+                const unproductiveHours = day.data.unproductive / (1000 * 60 * 60);
+                
+                const totalHeight = Math.max((totalHours / (maxTime / (1000 * 60 * 60))) * 160, 4);
+                const productiveHeight = (productiveHours / (maxTime / (1000 * 60 * 60))) * 160;
+                const unproductiveHeight = (unproductiveHours / (maxTime / (1000 * 60 * 60))) * 160;
+                
+                chartHTML += `
+                    <div class="flex flex-col items-center">
+                        <div class="relative" style="height: 160px; width: 24px;">
+                            <div class="absolute bottom-0 w-full bg-red-500/60 rounded-t" style="height: ${unproductiveHeight}px;"></div>
+                            <div class="absolute bottom-0 w-full bg-green-500/60 rounded-t" style="height: ${productiveHeight}px;"></div>
+                        </div>
+                        <div class="text-xs text-slate-400 mt-2 text-center">
+                            <div>${day.shortDate}</div>
+                            <div>${totalHours.toFixed(1)}h</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            chartHTML += '</div>';
+            chartHTML += '<div class="flex justify-center gap-4 mt-4 text-sm">';
+            chartHTML += '<div class="flex items-center gap-2"><div class="w-3 h-3 bg-green-500/60 rounded"></div><span class="text-slate-300">Productive</span></div>';
+            chartHTML += '<div class="flex items-center gap-2"><div class="w-3 h-3 bg-red-500/60 rounded"></div><span class="text-slate-300">Unproductive</span></div>';
+            chartHTML += '</div>';
+            
+            chartContainer.innerHTML = chartHTML;
+        }
+
+        function displayHistoryList(data) {
+            const listContainer = document.getElementById('history-list');
+            const historicalData = data.historicalData || {};
+            
+            const sortedDates = Object.keys(historicalData).sort((a, b) => new Date(b) - new Date(a));
+            
+            if (sortedDates.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="history-item">
+                        <div class="text-center text-slate-400">
+                            No historical data available yet. Start using the extension to see your screen time history!
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
+            listContainer.innerHTML = '';
+            
+            sortedDates.slice(0, 30).forEach(dateStr => {
+                const dayData = historicalData[dateStr];
+                const date = new Date(dateStr);
+                const totalHours = dayData.totalTime / (1000 * 60 * 60);
+                const productiveHours = dayData.productive / (1000 * 60 * 60);
+                const unproductiveHours = dayData.unproductive / (1000 * 60 * 60);
+                const productivityScore = totalHours > 0 ? Math.round((productiveHours / totalHours) * 100) : 100;
+                
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex items-center gap-3">
+                            <div class="text-slate-200 font-medium">${date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div>
+                            <div class="text-sm px-2 py-1 rounded ${dayData.healthScore >= 70 ? 'bg-green-500/20 text-green-400' : dayData.healthScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">
+                                Health: ${dayData.healthScore}%
+                            </div>
+                        </div>
+                        <div class="text-slate-300 font-bold">${totalHours.toFixed(1)}h total</div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 text-sm">
+                        <div class="text-center">
+                            <div class="text-green-400 font-bold">${productiveHours.toFixed(1)}h</div>
+                            <div class="text-slate-500">Productive</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-red-400 font-bold">${unproductiveHours.toFixed(1)}h</div>
+                            <div class="text-slate-500">Unproductive</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-blue-400 font-bold">${productivityScore}%</div>
+                            <div class="text-slate-500">Productivity</div>
+                        </div>
+                    </div>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        // Handle Enter key in website input fields
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('new-productive-site')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addWebsite('productive');
+                }
+            });
+            
+            document.getElementById('new-unproductive-site')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addWebsite('unproductive');
+                }
+            });
+        });
+    </script>

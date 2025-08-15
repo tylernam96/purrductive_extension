@@ -1,4 +1,4 @@
-// newtab.js - FIXED: Proper productivity calculations and display
+// newtab.js - UPDATED: Proper productivity calculations and new navigation
 class ProductivityDashboard {
   constructor() {
     this.init();
@@ -21,7 +21,6 @@ class ProductivityDashboard {
   setupEventListeners() {
     document.addEventListener('DOMContentLoaded', () => {
       this.loadInitialData();
-      // Search setup is now handled in setupSearchFunctionality() after stats load
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -54,12 +53,10 @@ class ProductivityDashboard {
     }
   }
 
-  // FIXED: Force correct productivity calculations regardless of background script
   updateDashboard(stats) {
     console.log('=== DASHBOARD UPDATE DEBUG ===');
     console.log('Raw stats received:', stats);
     
-    // Store current stats for search functionality
     this.currentStats = stats;
     
     // AGGRESSIVE FIX: Always recalculate from scratch
@@ -82,9 +79,8 @@ class ProductivityDashboard {
         } else if (category === 'unproductive' || category === 'distracting') {
           totalUnproductive += timeMs;
         } else if (category === 'neutral') {
-          // For now, let's count neutral sites - you can decide which category they should go to
-          console.log(`   ℹ️ Neutral site detected: ${site.domain} - adding to productive for now`);
-          totalProductive += timeMs; // Change this line to totalUnproductive += timeMs; if you prefer
+          console.log(`   ℹ️ Neutral site detected: ${site.domain} - adding to unproductive`);
+          totalUnproductive += timeMs;
         }
       });
       
@@ -105,7 +101,6 @@ class ProductivityDashboard {
       stats.unproductiveTimeRaw = 0;
     }
     
-    // Force update the display immediately
     console.log('🔄 Updating display with corrected values...');
     
     this.updateHealthBar(stats.catHealth);
@@ -125,7 +120,6 @@ class ProductivityDashboard {
     console.log('================================\n');
   }
 
-  // Helper method to format time consistently
   formatTime(ms) {
     if (!ms || ms === 0) return '0m';
     
@@ -138,7 +132,6 @@ class ProductivityDashboard {
     return `${minutes}m`;
   }
 
-  // FIXED: Google search functionality instead of filtering dashboard data
   setupSearchFunctionality() {
     const searchInput = document.getElementById('searchInput');
     
@@ -151,32 +144,27 @@ class ProductivityDashboard {
     const newSearchInput = searchInput.cloneNode(true);
     searchInput.parentNode.replaceChild(newSearchInput, searchInput);
     
-    // Function to handle search or direct navigation
     const handleSearch = (query) => {
       if (query.trim() === '') {
-        return; // Don't search for empty queries
+        return;
       }
       
       const trimmedQuery = query.trim();
       
-      // Check if it looks like a URL or domain
       const isUrl = (str) => {
-        // Check for common URL patterns
         const urlPatterns = [
-          /^https?:\/\//i,                    // starts with http:// or https://
-          /^[a-z0-9.-]+\.[a-z]{2,}$/i,       // domain.com format
-          /^www\.[a-z0-9.-]+\.[a-z]{2,}$/i,  // www.domain.com format
-          /^[a-z0-9.-]+\.(com|org|net|edu|gov|io|co|uk|de|fr|jp|cn|au|ca)$/i // common TLDs
+          /^https?:\/\//i,
+          /^[a-z0-9.-]+\.[a-z]{2,}$/i,
+          /^www\.[a-z0-9.-]+\.[a-z]{2,}$/i,
+          /^[a-z0-9.-]+\.(com|org|net|edu|gov|io|co|uk|de|fr|jp|cn|au|ca)$/i
         ];
         
         return urlPatterns.some(pattern => pattern.test(str));
       };
       
       if (isUrl(trimmedQuery)) {
-        // It's a URL or domain - navigate directly
         let url = trimmedQuery;
         
-        // Add https:// if no protocol specified
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
           url = 'https://' + url;
         }
@@ -184,7 +172,6 @@ class ProductivityDashboard {
         console.log('Navigating directly to:', url);
         window.location.href = url;
       } else {
-        // It's a search query - use Google
         const encodedQuery = encodeURIComponent(trimmedQuery);
         const googleSearchUrl = `https://www.google.com/search?q=${encodedQuery}`;
         
@@ -193,7 +180,6 @@ class ProductivityDashboard {
       }
     };
     
-    // Handle Enter key press
     newSearchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -203,7 +189,6 @@ class ProductivityDashboard {
       }
     });
     
-    // Optional: Handle form submission if the input is in a form
     const form = newSearchInput.closest('form');
     if (form) {
       form.addEventListener('submit', (e) => {
@@ -213,9 +198,6 @@ class ProductivityDashboard {
         handleSearch(query);
       });
     }
-    
-    // Set placeholder text to match Chrome's address bar
-    newSearchInput.placeholder = 'Search Google or type a URL';
     
     console.log('Google search functionality setup complete!');
   }
@@ -243,7 +225,6 @@ class ProductivityDashboard {
     }
   }
 
-  // FIXED: Simplified productivity stats without change calculations
   updateProductivityStats(stats) {
     const productiveTime = document.querySelector('.productive-time');
     const unproductiveTime = document.querySelector('.unproductive-time');
@@ -253,7 +234,7 @@ class ProductivityDashboard {
     if (productiveTime) productiveTime.textContent = stats.productiveTime;
     if (unproductiveTime) unproductiveTime.textContent = stats.unproductiveTime;
     
-    // FIXED: Hide change indicators to reduce clutter
+    // Hide change indicators to reduce clutter
     if (productiveChange) {
       productiveChange.textContent = '';
       productiveChange.className = 'mt-2 text-xs text-transparent';
@@ -261,81 +242,6 @@ class ProductivityDashboard {
     if (unproductiveChange) {
       unproductiveChange.textContent = '';
       unproductiveChange.className = 'mt-2 text-xs text-transparent';
-    }
-  }
-
-  // FIXED: Proper change calculation method
-  async calculateAndDisplayChanges(stats, productiveChangeEl, unproductiveChangeEl) {
-    try {
-      // Get yesterday's data for comparison
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayKey = yesterday.toDateString();
-      
-      const dailyStatsData = await chrome.runtime.sendMessage({ type: 'GET_DAILY_STATS' });
-      const yesterdayStats = dailyStatsData?.dailyStats?.[yesterdayKey];
-      
-      if (yesterdayStats && productiveChangeEl && unproductiveChangeEl) {
-        // Calculate percentage changes
-        const todayProductive = stats.productiveTimeRaw || 0;
-        const todayUnproductive = stats.unproductiveTimeRaw || 0;
-        const yesterdayProductive = yesterdayStats.productive || 0;
-        const yesterdayUnproductive = yesterdayStats.unproductive || 0;
-        
-        // FIXED: Whole number percentage calculations
-        const productiveChange = yesterdayProductive > 0 ? 
-          Math.round(((todayProductive - yesterdayProductive) / yesterdayProductive) * 100) : 
-          (todayProductive > 0 ? 100 : 0);
-          
-        const unproductiveChange = yesterdayUnproductive > 0 ? 
-          Math.round(((todayUnproductive - yesterdayUnproductive) / yesterdayUnproductive) * 100) : 
-          (todayUnproductive > 0 ? 100 : 0);
-        
-        // Update productive change display
-        if (productiveChange > 0) {
-          productiveChangeEl.textContent = `↗ +${productiveChange}% vs yesterday`;
-          productiveChangeEl.className = 'mt-2 text-xs text-green-500';
-        } else if (productiveChange < 0) {
-          productiveChangeEl.textContent = `↘ ${productiveChange}% vs yesterday`;
-          productiveChangeEl.className = 'mt-2 text-xs text-red-500';
-        } else {
-          productiveChangeEl.textContent = `→ No change vs yesterday`;
-          productiveChangeEl.className = 'mt-2 text-xs text-gray-500';
-        }
-        
-        // Update unproductive change display (reverse colors - less unproductive is good)
-        if (unproductiveChange > 0) {
-          unproductiveChangeEl.textContent = `↗ +${unproductiveChange}% vs yesterday`;
-          unproductiveChangeEl.className = 'mt-2 text-xs text-red-500';
-        } else if (unproductiveChange < 0) {
-          unproductiveChangeEl.textContent = `↘ ${unproductiveChange}% vs yesterday`;
-          unproductiveChangeEl.className = 'mt-2 text-xs text-green-500';
-        } else {
-          unproductiveChangeEl.textContent = `→ No change vs yesterday`;
-          unproductiveChangeEl.className = 'mt-2 text-xs text-gray-500';
-        }
-      } else {
-        // No yesterday data available - hide the change indicators
-        if (productiveChangeEl) {
-          productiveChangeEl.textContent = ``;
-          productiveChangeEl.className = 'mt-2 text-xs text-transparent';
-        }
-        if (unproductiveChangeEl) {
-          unproductiveChangeEl.textContent = ``;
-          unproductiveChangeEl.className = 'mt-2 text-xs text-transparent';
-        }
-      }
-    } catch (error) {
-      console.error('Error calculating changes:', error);
-      // Fallback display - hide change indicators on error
-      if (productiveChangeEl) {
-        productiveChangeEl.textContent = ``;
-        productiveChangeEl.className = 'mt-2 text-xs text-transparent';
-      }
-      if (unproductiveChangeEl) {
-        unproductiveChangeEl.textContent = ``;
-        unproductiveChangeEl.className = 'mt-2 text-xs text-transparent';
-      }
     }
   }
 
@@ -389,6 +295,7 @@ class ProductivityDashboard {
         'instagram.com': '📷',
         'facebook.com': '📘',
         'twitter.com': '🐦',
+        'x.com': '🐦',
         'reddit.com': '🤖',
         'tiktok.com': '🎵',
         'netflix.com': '🎬',
@@ -401,6 +308,9 @@ class ProductivityDashboard {
         'linkedin.com': '💼',
         'medium.com': '📖',
         'news.google.com': '📰',
+        'claude.ai': '🤖',
+        'chatgpt.com': '🤖',
+        'coingecko.com': '🦎',
         'default': '🌐'
       };
       
@@ -496,8 +406,308 @@ class ProductivityDashboard {
   }
 }
 
+// Navigation functionality
+function showPage(pageId) {
+  // Hide all pages
+  document.querySelectorAll('.page').forEach(page => {
+    page.classList.remove('active');
+  });
+  
+  // Remove active class from all nav buttons
+  document.querySelectorAll('.nav-button').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  
+  // Show selected page
+  document.getElementById(pageId + '-page').classList.add('active');
+  
+  // Add active class to clicked button
+  document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+  
+  // Load page-specific content
+  if (pageId === 'history') {
+    loadHistoryData();
+  } else if (pageId === 'settings') {
+    loadSettings();
+  }
+}
+
+// Settings functionality
+let currentSettings = {};
+
+async function loadSettings() {
+  try {
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    currentSettings = settings;
+    
+    // Populate screen time goal
+    document.getElementById('screenTimeGoal').value = settings.dailyScreenTimeGoal || 6;
+    
+    // Populate website categories
+    populateWebsiteList('productive', settings.websiteCategories?.productive || []);
+    populateWebsiteList('unproductive', settings.websiteCategories?.unproductive || []);
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+}
+
+function populateWebsiteList(type, websites) {
+  const container = document.getElementById(type + '-websites');
+  container.innerHTML = '';
+  
+  websites.forEach(website => {
+    const tag = document.createElement('span');
+    tag.className = `website-tag ${type === 'unproductive' ? 'unproductive' : ''}`;
+    tag.textContent = website;
+    tag.addEventListener('click', () => removeWebsite(type, website));
+    tag.title = 'Click to remove';
+    container.appendChild(tag);
+  });
+}
+
+function addWebsite(type) {
+  const input = document.getElementById('new-' + type + '-site');
+  const website = input.value.trim().toLowerCase();
+  
+  if (!website) return;
+  
+  // Remove common prefixes
+  const cleanWebsite = website.replace(/^(https?:\/\/)?(www\.)?/, '');
+  
+  if (!currentSettings.websiteCategories) {
+    currentSettings.websiteCategories = { productive: [], unproductive: [] };
+  }
+  
+  // Remove from other category if exists
+  const otherType = type === 'productive' ? 'unproductive' : 'productive';
+  currentSettings.websiteCategories[otherType] = currentSettings.websiteCategories[otherType].filter(site => site !== cleanWebsite);
+  
+  // Add to current category if not already there
+  if (!currentSettings.websiteCategories[type].includes(cleanWebsite)) {
+    currentSettings.websiteCategories[type].push(cleanWebsite);
+  }
+  
+  // Update display
+  populateWebsiteList('productive', currentSettings.websiteCategories.productive);
+  populateWebsiteList('unproductive', currentSettings.websiteCategories.unproductive);
+  
+  input.value = '';
+}
+
+function removeWebsite(type, website) {
+  if (!currentSettings.websiteCategories) return;
+  
+  currentSettings.websiteCategories[type] = currentSettings.websiteCategories[type].filter(site => site !== website);
+  populateWebsiteList(type, currentSettings.websiteCategories[type]);
+}
+
+async function saveSettings() {
+  try {
+    const screenTimeGoal = parseFloat(document.getElementById('screenTimeGoal').value) || 6;
+    
+    await chrome.runtime.sendMessage({
+      type: 'UPDATE_SETTINGS',
+      settings: {
+        dailyScreenTimeGoal: screenTimeGoal
+      }
+    });
+    
+    await chrome.runtime.sendMessage({
+      type: 'UPDATE_WEBSITE_CATEGORIES',
+      categories: currentSettings.websiteCategories
+    });
+    
+    // Show success feedback
+    const saveButton = document.getElementById('save-settings-btn');
+    const originalText = saveButton.textContent;
+    saveButton.textContent = 'Saved!';
+    saveButton.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+    
+    setTimeout(() => {
+      saveButton.textContent = originalText;
+      saveButton.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+    }, 2000);
+    
+  } catch (error) {
+    console.error('Error saving settings:', error);
+  }
+}
+
+// History functionality
+async function loadHistoryData() {
+  try {
+    const historyData = await chrome.runtime.sendMessage({ type: 'GET_HISTORICAL_DATA' });
+    displayHistoryChart(historyData);
+    displayHistoryList(historyData);
+  } catch (error) {
+    console.error('Error loading history:', error);
+  }
+}
+
+function displayHistoryChart(data) {
+  const chartContainer = document.getElementById('history-chart');
+  const historicalData = data.historicalData || {};
+  
+  // Get last 7 days
+  const last7Days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateStr = date.toDateString();
+    last7Days.push({
+      date: dateStr,
+      shortDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).replace(' ', ''), // "Aug15" format
+      data: historicalData[dateStr] || { productive: 0, unproductive: 0, totalTime: 0, healthScore: 100 }
+    });
+  }
+  
+  // Side-by-side bar chart with more spacing
+  let chartHTML = '<div class="flex items-end justify-between h-48 border-b border-slate-600 px-6" style="gap: 2rem;">';
+  
+  const maxTime = Math.max(...last7Days.map(day => Math.max(day.data.productive, day.data.unproductive))) || 1;
+  
+  last7Days.forEach(day => {
+    const productiveHours = day.data.productive / (1000 * 60 * 60);
+    const unproductiveHours = day.data.unproductive / (1000 * 60 * 60);
+    const totalHours = day.data.totalTime / (1000 * 60 * 60);
+    
+    const productiveHeight = Math.max((productiveHours / (maxTime / (1000 * 60 * 60))) * 160, 2);
+    const unproductiveHeight = Math.max((unproductiveHours / (maxTime / (1000 * 60 * 60))) * 160, 2);
+    
+    chartHTML += `
+      <div class="flex flex-col items-center">
+        <div class="flex items-end gap-2" style="height: 160px;">
+          <div class="bg-green-500/60 rounded-t" style="height: ${productiveHeight}px; width: 12px;" title="Productive: ${Math.round(productiveHours)}h"></div>
+          <div class="bg-red-500/60 rounded-t" style="height: ${unproductiveHeight}px; width: 12px;" title="Unproductive: ${Math.round(unproductiveHours)}h"></div>
+        </div>
+        <div class="text-xs text-slate-400 mt-3 text-center">
+          <div class="font-medium">${day.shortDate}</div>
+          <div class="mt-1">${Math.round(totalHours)}h</div>
+        </div>
+      </div>
+    `;
+  });
+  
+  chartHTML += '</div>';
+  chartHTML += '<div class="flex justify-center gap-6 mt-6 text-sm">';
+  chartHTML += '<div class="flex items-center gap-2"><div class="w-3 h-3 bg-green-500/60 rounded"></div><span class="text-slate-300">Productive</span></div>';
+  chartHTML += '<div class="flex items-center gap-2"><div class="w-3 h-3 bg-red-500/60 rounded"></div><span class="text-slate-300">Unproductive</span></div>';
+  chartHTML += '</div>';
+  
+  chartContainer.innerHTML = chartHTML;
+}
+
+function displayHistoryList(data) {
+  const listContainer = document.getElementById('history-list');
+  const historicalData = data.historicalData || {};
+  
+  const sortedDates = Object.keys(historicalData).sort((a, b) => new Date(b) - new Date(a));
+  
+  if (sortedDates.length === 0) {
+    listContainer.innerHTML = `
+      <div class="history-item">
+        <div class="text-center text-slate-400">
+          No historical data available yet. Start using the extension to see your screen time history!
+        </div>
+      </div>
+    `;
+    return;
+  }
+  
+  listContainer.innerHTML = '';
+  
+  sortedDates.slice(0, 30).forEach(dateStr => {
+    const dayData = historicalData[dateStr];
+    const date = new Date(dateStr);
+    const totalHours = Math.round(dayData.totalTime / (1000 * 60 * 60));
+    const productiveHours = Math.round(dayData.productive / (1000 * 60 * 60));
+    const unproductiveHours = Math.round(dayData.unproductive / (1000 * 60 * 60));
+    const productivityScore = totalHours > 0 ? Math.round((dayData.productive / dayData.totalTime) * 100) : 100;
+    
+    // Format date as "Monday Aug15"
+    const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+    const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).replace(' ', '');
+    const formattedDate = `${weekday} ${monthDay}`;
+    
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.innerHTML = `
+      <div class="flex justify-between items-center mb-2">
+        <div class="flex items-center gap-3">
+          <div class="text-slate-200 font-medium">${formattedDate}</div>
+          <div class="text-sm px-2 py-1 rounded ${dayData.healthScore >= 70 ? 'bg-green-500/20 text-green-400' : dayData.healthScore >= 40 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}">
+            Health: ${dayData.healthScore}%
+          </div>
+        </div>
+        <div class="text-slate-300 font-bold">${totalHours}h total</div>
+      </div>
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div class="text-center">
+          <div class="text-green-400 font-bold">${productiveHours}h</div>
+          <div class="text-slate-500">Productive</div>
+        </div>
+        <div class="text-center">
+          <div class="text-red-400 font-bold">${unproductiveHours}h</div>
+          <div class="text-slate-500">Unproductive</div>
+        </div>
+        <div class="text-center">
+          <div class="text-blue-400 font-bold">${productivityScore}%</div>
+          <div class="text-slate-500">Productivity</div>
+        </div>
+      </div>
+    `;
+    listContainer.appendChild(item);
+  });
+}
+
 // Initialize dashboard when the script loads
 const dashboard = new ProductivityDashboard();
 
 // Make dashboard available globally for debugging
 window.productivityDashboard = dashboard;
+
+// Handle Enter key in website input fields and set up event listeners
+document.addEventListener('DOMContentLoaded', function() {
+  // Navigation event listeners
+  document.querySelectorAll('.nav-button').forEach(button => {
+    button.addEventListener('click', function() {
+      const pageId = this.getAttribute('data-page');
+      showPage(pageId);
+    });
+  });
+
+  // Settings page event listeners
+  const addProductiveBtn = document.getElementById('add-productive-btn');
+  if (addProductiveBtn) {
+    addProductiveBtn.addEventListener('click', () => addWebsite('productive'));
+  }
+
+  const addUnproductiveBtn = document.getElementById('add-unproductive-btn');
+  if (addUnproductiveBtn) {
+    addUnproductiveBtn.addEventListener('click', () => addWebsite('unproductive'));
+  }
+
+  const saveSettingsBtn = document.getElementById('save-settings-btn');
+  if (saveSettingsBtn) {
+    saveSettingsBtn.addEventListener('click', saveSettings);
+  }
+
+  // Enter key handlers for input fields
+  const productiveSiteInput = document.getElementById('new-productive-site');
+  if (productiveSiteInput) {
+    productiveSiteInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        addWebsite('productive');
+      }
+    });
+  }
+  
+  const unproductiveSiteInput = document.getElementById('new-unproductive-site');
+  if (unproductiveSiteInput) {
+    unproductiveSiteInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        addWebsite('unproductive');
+      }
+    });
+  }
+});

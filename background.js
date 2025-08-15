@@ -4,10 +4,10 @@ class PurrductiveBackground {
     this.setupEventListeners();
     this.broadcastTimeout = null;
     
-    // FIXED: Reduced popup frequency and simplified thresholds
+    // UPDATED: Reduced popup frequency and simplified thresholds
     this.popupConfig = {
-      healthThreshold: 25, // Lower threshold so it triggers less often
-      showCooldown: 10 * 60 * 1000, // Increased to 10 minutes cooldown
+      healthThreshold: 25,
+      showCooldown: 10 * 60 * 1000,
       lastShownTime: 0
     };
   }
@@ -34,10 +34,12 @@ class PurrductiveBackground {
 
   async setDefaultSettings() {
     const defaultSettings = {
-      catHealth: 100, // FIXED: Start at 100 instead of 80
+      catHealth: 100,
       catHappiness: 70,
       currentScreenTime: 6,
       desiredScreenTime: 4,
+      // NEW: User-configurable daily screen time goal
+      dailyScreenTimeGoal: 6, // hours
       mutedUntil: null,
       totalProductiveTime: 0,
       totalUnproductiveTime: 0,
@@ -58,11 +60,13 @@ class PurrductiveBackground {
           'instagram.com', 'tiktok.com', 'youtube.com',
           'facebook.com', 'twitter.com', 'reddit.com',
           'twitch.tv', 'netflix.com', 'hulu.com', 'tinder.com',
-          'snapchat.com', 'pinterest.com'
+          'snapchat.com', 'pinterest.com', 'x.com'
         ]
       },
       dailyStats: {},
-      weeklyProgress: []
+      weeklyProgress: [],
+      // NEW: Historical data storage
+      historicalData: {}
     };
 
     await chrome.storage.local.set(defaultSettings);
@@ -104,10 +108,9 @@ class PurrductiveBackground {
   }
 
   createAlarms() {
-    // FIXED: Increased intervals to reduce popup frequency
-    chrome.alarms.create('updateCatStatus', { periodInMinutes: 5 }); // Was 3
-    chrome.alarms.create('checkThresholds', { periodInMinutes: 15 }); // Was 5
-    chrome.alarms.create('broadcastStats', { periodInMinutes: 2 }); // Was 1
+    chrome.alarms.create('updateCatStatus', { periodInMinutes: 3 }); // More frequent updates for faster health decay
+    chrome.alarms.create('checkThresholds', { periodInMinutes: 10 });
+    chrome.alarms.create('broadcastStats', { periodInMinutes: 2 });
   }
 
   async pauseTracking() {
@@ -200,7 +203,7 @@ class PurrductiveBackground {
     
     const data = await chrome.storage.local.get([
       'dailyStats', 'lastActiveTime', 'lastActiveDomain', 'totalProductiveTime', 'totalUnproductiveTime',
-      'sessionStartTime'
+      'sessionStartTime', 'historicalData'
     ]);
     
     console.log('Current tracking data:', {
@@ -219,6 +222,19 @@ class PurrductiveBackground {
         sessions: []
       };
       console.log('Initialized daily stats for:', today);
+    }
+
+    // NEW: Initialize historical data
+    if (!data.historicalData[today]) {
+      data.historicalData[today] = {
+        date: today,
+        productive: 0,
+        unproductive: 0,
+        neutral: 0,
+        totalTime: 0,
+        websites: {},
+        healthScore: data.catHealth || 100
+      };
     }
 
     // Calculate time spent on previous site
@@ -241,19 +257,27 @@ class PurrductiveBackground {
           timeSpent: Math.round(timeSpent/1000) + 's'
         });
         
-        // FIXED: Proper aggregation of productive/unproductive time
+        // Update daily stats
         if (prevCategory === 'productive') {
           data.dailyStats[today].productive += timeSpent;
           data.totalProductiveTime = (data.totalProductiveTime || 0) + timeSpent;
+          data.historicalData[today].productive += timeSpent;
           console.log('Added to PRODUCTIVE:', Math.round(timeSpent/1000) + 's');
         } else if (prevCategory === 'unproductive') {
           data.dailyStats[today].unproductive += timeSpent;
           data.totalUnproductiveTime = (data.totalUnproductiveTime || 0) + timeSpent;
+          data.historicalData[today].unproductive += timeSpent;
           console.log('Added to UNPRODUCTIVE:', Math.round(timeSpent/1000) + 's');
         } else {
           data.dailyStats[today].neutral += timeSpent;
+          data.historicalData[today].neutral += timeSpent;
           console.log('Added to NEUTRAL:', Math.round(timeSpent/1000) + 's');
         }
+        
+        // Update historical data
+        data.historicalData[today].totalTime = data.historicalData[today].productive + 
+                                                data.historicalData[today].unproductive + 
+                                                data.historicalData[today].neutral;
         
         if (!data.dailyStats[today].websites[data.lastActiveDomain]) {
           data.dailyStats[today].websites[data.lastActiveDomain] = {
@@ -265,6 +289,16 @@ class PurrductiveBackground {
         data.dailyStats[today].websites[data.lastActiveDomain].time += timeSpent;
         data.dailyStats[today].websites[data.lastActiveDomain].sessions += 1;
         data.dailyStats[today].websites[data.lastActiveDomain].category = prevCategory;
+        
+        // Update historical websites data
+        if (!data.historicalData[today].websites[data.lastActiveDomain]) {
+          data.historicalData[today].websites[data.lastActiveDomain] = {
+            time: 0,
+            category: prevCategory
+          };
+        }
+        data.historicalData[today].websites[data.lastActiveDomain].time += timeSpent;
+        data.historicalData[today].websites[data.lastActiveDomain].category = prevCategory;
         
         data.dailyStats[today].sessions.push({
           domain: data.lastActiveDomain,
@@ -296,10 +330,11 @@ class PurrductiveBackground {
     await chrome.storage.local.set(data);
   }
 
+  // UPDATED: Faster and more aggressive health decay based on user's screen time goal
   async updateCatStatus() {
     const data = await chrome.storage.local.get([
       'catHealth', 'catHappiness', 'totalProductiveTime', 'totalUnproductiveTime',
-      'currentScreenTime', 'desiredScreenTime', 'dailyStats'
+      'currentScreenTime', 'desiredScreenTime', 'dailyStats', 'dailyScreenTimeGoal'
     ]);
 
     const today = new Date().toDateString();
@@ -308,27 +343,68 @@ class PurrductiveBackground {
     const totalTime = todayStats.productive + todayStats.unproductive;
     const productiveRatio = totalTime > 0 ? todayStats.productive / totalTime : 0.5;
     
-    // FIXED: More gradual health changes
-    let healthDelta = (productiveRatio - 0.5) * 3; // Reduced from 5
-    let happinessDelta = (productiveRatio >= 0.6 ? 2 : -1); // Reduced penalties
-    
-    if (productiveRatio >= 0.7) {
-      healthDelta += 1; // Reduced bonus
-      happinessDelta += 1;
-    }
-    
+    // Get user's daily screen time goal (default to 6 hours if not set)
+    const screenTimeGoal = data.dailyScreenTimeGoal || 6;
     const totalHours = totalTime / (1000 * 60 * 60);
-    if (totalHours > data.currentScreenTime) {
-      healthDelta -= 2; // Reduced penalty
-      happinessDelta -= 2;
+    
+    // UPDATED: More aggressive health changes
+    let healthDelta = 0;
+    let happinessDelta = 0;
+    
+    // Base health changes based on productivity ratio (faster decay)
+    if (productiveRatio >= 0.8) {
+      healthDelta += 3; // Increased from 1
+      happinessDelta += 3;
+    } else if (productiveRatio >= 0.6) {
+      healthDelta += 1;
+      happinessDelta += 2;
+    } else if (productiveRatio >= 0.4) {
+      healthDelta -= 2; // Increased penalty
+      happinessDelta -= 1;
+    } else {
+      healthDelta -= 4; // Much faster decay for poor productivity
+      happinessDelta -= 3;
     }
+    
+    // Screen time penalties (scaled by user's goal)
+    const screenTimeRatio = totalHours / screenTimeGoal;
+    if (screenTimeRatio > 1.5) {
+      healthDelta -= 6; // Severe penalty for excessive screen time
+      happinessDelta -= 4;
+    } else if (screenTimeRatio > 1.2) {
+      healthDelta -= 4; // Moderate penalty
+      happinessDelta -= 3;
+    } else if (screenTimeRatio > 1.0) {
+      healthDelta -= 2; // Light penalty
+      happinessDelta -= 1;
+    }
+    
+    // Additional penalty for too much unproductive time
+    const unproductiveHours = todayStats.unproductive / (1000 * 60 * 60);
+    if (unproductiveHours > 2) {
+      healthDelta -= Math.floor(unproductiveHours); // -1 health per hour of unproductive time over 2 hours
+    }
+    
+    console.log('Health update:', {
+      productiveRatio: Math.round(productiveRatio * 100) + '%',
+      totalHours: Math.round(totalHours * 100) / 100,
+      screenTimeGoal,
+      screenTimeRatio: Math.round(screenTimeRatio * 100) / 100,
+      healthDelta,
+      happinessDelta
+    });
 
-    const newHealth = Math.max(0, Math.min(100, (data.catHealth || 80) + healthDelta));
+    const newHealth = Math.max(0, Math.min(100, (data.catHealth || 100) + healthDelta));
     const newHappiness = Math.max(0, Math.min(100, (data.catHappiness || 70) + happinessDelta));
+
+    // Update historical data with current health
+    const historicalUpdate = {};
+    historicalUpdate[`historicalData.${today}.healthScore`] = newHealth;
 
     await chrome.storage.local.set({
       catHealth: newHealth,
-      catHappiness: newHappiness
+      catHappiness: newHappiness,
+      ...historicalUpdate
     });
 
     await this.checkPopupThresholds();
@@ -351,11 +427,10 @@ class PurrductiveBackground {
     }
   }
 
-  // FIXED: All percentages are now whole numbers
   async getAllStats() {
     const data = await chrome.storage.local.get([
       'catHealth', 'catHappiness', 'dailyStats', 'totalProductiveTime', 
-      'totalUnproductiveTime', 'currentScreenTime', 'desiredScreenTime'
+      'totalUnproductiveTime', 'currentScreenTime', 'desiredScreenTime', 'dailyScreenTimeGoal'
     ]);
 
     const today = new Date().toDateString();
@@ -366,7 +441,6 @@ class PurrductiveBackground {
       websites: {} 
     };
 
-    // FIXED: Proper productivity calculation with whole numbers
     const totalTime = todayStats.productive + todayStats.unproductive;
     const productivityScore = totalTime > 0 ? 
       Math.round((todayStats.productive / totalTime) * 100) : 100;
@@ -391,9 +465,9 @@ class PurrductiveBackground {
     };
 
     return {
-      catHealth: Math.round(data.catHealth || 100), // FIXED: Default to 100
+      catHealth: Math.round(data.catHealth || 100),
       catHappiness: Math.round(data.catHappiness || 70),
-      productivityScore, // Already rounded above
+      productivityScore,
       productiveTime: formatTime(todayStats.productive),
       unproductiveTime: formatTime(todayStats.unproductive),
       totalTime: formatTime(totalTime),
@@ -403,11 +477,11 @@ class PurrductiveBackground {
       websites,
       currentScreenTime: data.currentScreenTime || 6,
       desiredScreenTime: data.desiredScreenTime || 4,
+      dailyScreenTimeGoal: data.dailyScreenTimeGoal || 6, // NEW
       timestamp: Date.now()
     };
   }
 
-  // FIXED: Simplified popup threshold logic - only health matters
   async checkPopupThresholds() {
     const data = await chrome.storage.local.get([
       'catHealth', 'popupLastShown', 'mutedUntil'
@@ -422,7 +496,6 @@ class PurrductiveBackground {
       return;
     }
 
-    // FIXED: Only trigger on low health to reduce frequency
     const shouldShowPopup = data.catHealth < this.popupConfig.healthThreshold;
 
     if (shouldShowPopup) {
@@ -469,6 +542,31 @@ class PurrductiveBackground {
       case 'GET_ALL_STATS':
         const allStats = await this.getAllStats();
         sendResponse(allStats);
+        break;
+
+      // NEW: Get historical data
+      case 'GET_HISTORICAL_DATA':
+        const historicalData = await chrome.storage.local.get(['historicalData', 'dailyStats']);
+        sendResponse({
+          historicalData: historicalData.historicalData || {},
+          dailyStats: historicalData.dailyStats || {}
+        });
+        break;
+
+      // NEW: Get settings
+      case 'GET_SETTINGS':
+        const settings = await chrome.storage.local.get([
+          'dailyScreenTimeGoal', 'websiteCategories', 'desiredScreenTime'
+        ]);
+        sendResponse(settings);
+        break;
+
+      // NEW: Update website categories
+      case 'UPDATE_WEBSITE_CATEGORIES':
+        await chrome.storage.local.set({ 
+          websiteCategories: message.categories 
+        });
+        sendResponse({ success: true });
         break;
         
       case 'MUTE_NOTIFICATIONS':
