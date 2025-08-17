@@ -14,6 +14,29 @@
             font-family: 'Inter', sans-serif;
         }
         
+        /* Cat image styles */
+        #cat-image {
+            transition: all 0.3s ease;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+        
+        #cat-image:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Health-based image effects */
+        .cat-healthy {
+            filter: drop-shadow(0 4px 8px rgba(34, 197, 94, 0.3)) brightness(1.1);
+        }
+        
+        .cat-sad {
+            filter: drop-shadow(0 4px 8px rgba(234, 179, 8, 0.3)) brightness(0.9);
+        }
+        
+        .cat-dead {
+            filter: drop-shadow(0 4px 8px rgba(239, 68, 68, 0.3)) brightness(0.7) grayscale(0.3);
+        }
+        
         /* Navigation styles */
         .nav-button {
             background: rgba(255, 255, 255, 0.1);
@@ -144,7 +167,9 @@
     
     <!-- Header -->
     <div class="flex flex-col items-center mb-6">
-        <div class="text-5xl animate-bounce mb-3 cat-emoji">🐱</div>
+        <div class="mb-4">
+            <img id="cat-image" src="images/happy.png" alt="Productivity Cat" class="w-24 h-24 object-contain">
+        </div>
         <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             Productivity Dashboard
         </h1>

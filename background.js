@@ -3,11 +3,12 @@ class PurrductiveBackground {
     this.init();
     this.setupEventListeners();
     this.broadcastTimeout = null;
+    this.lastMidnightCheck = null;
     
-    // UPDATED: Reduced popup frequency and simplified thresholds
+    // FIXED: Reduced popup frequency and simplified thresholds
     this.popupConfig = {
-      healthThreshold: 25,
-      showCooldown: 10 * 60 * 1000,
+      healthThreshold: 25, // Lower threshold so it triggers less often
+      showCooldown: 10 * 60 * 1000, // Increased to 10 minutes cooldown
       lastShownTime: 0
     };
   }
@@ -20,26 +21,153 @@ class PurrductiveBackground {
     
     chrome.runtime.onStartup.addListener(() => {
       this.initializeSession();
+      this.checkMidnightReset(); // Check if we need to reset for new day
     });
+  }
+
+  // FIXED: Check for midnight reset and preserve historical data
+  async checkMidnightReset() {
+    const now = new Date();
+    const today = now.toDateString();
+    const currentHour = now.getHours();
+    
+    const data = await chrome.storage.local.get([
+      'dailyStats', 'lastResetDate', 'weeklyProgress', 'historicalData'
+    ]);
+    
+    console.log('Checking midnight reset:', {
+      today,
+      lastResetDate: data.lastResetDate,
+      currentHour
+    });
+    
+    // If it's a new day, archive yesterday's data and reset
+    if (data.lastResetDate !== today) {
+      console.log('New day detected - archiving data and resetting');
+      
+      // Get yesterday's date
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayKey = yesterday.toDateString();
+      
+      // Archive yesterday's data if it exists
+      if (data.dailyStats && data.dailyStats[yesterdayKey]) {
+        const historicalData = data.historicalData || {};
+        historicalData[yesterdayKey] = {
+          ...data.dailyStats[yesterdayKey],
+          date: yesterdayKey,
+          timestamp: yesterday.getTime()
+        };
+        
+        // Keep only last 30 days of historical data
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        Object.keys(historicalData).forEach(dateKey => {
+          const dataDate = new Date(dateKey);
+          if (dataDate < thirtyDaysAgo) {
+            delete historicalData[dateKey];
+          }
+        });
+        
+        await chrome.storage.local.set({ historicalData });
+        console.log('Archived yesterday\'s data:', historicalData[yesterdayKey]);
+      }
+      
+      // Reset daily stats but keep other data
+      const newDailyStats = {};
+      newDailyStats[today] = {
+        productive: 0,
+        unproductive: 0,
+        neutral: 0,
+        websites: {},
+        sessions: []
+      };
+      
+      await chrome.storage.local.set({
+        dailyStats: newDailyStats,
+        lastResetDate: today,
+        catHealth: 100, // Reset health for new day
+        catHappiness: 70,
+        sessionStartTime: Date.now(),
+        lastActiveTime: Date.now(),
+        lastActiveDomain: null
+      });
+      
+      console.log('Reset complete for new day:', today);
+    }
+    
+    // Schedule next midnight check
+    this.scheduleMidnightCheck();
+  }
+
+  // FIXED: Schedule automatic midnight reset
+  scheduleMidnightCheck() {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 1, 0, 0); // 12:01 AM tomorrow
+    
+    const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+    
+    console.log('Scheduling midnight check in', Math.round(timeUntilMidnight / (1000 * 60 * 60)), 'hours');
+    
+    setTimeout(() => {
+      this.checkMidnightReset();
+    }, timeUntilMidnight);
   }
 
   async initializeSession() {
     const now = Date.now();
+    const today = new Date().toDateString();
+    
+    // FIXED: Initialize today's stats if they don't exist, but preserve existing data
+    const data = await chrome.storage.local.get(['dailyStats', 'lastResetDate', 'catHealth']);
+    
+    if (!data.dailyStats) {
+      data.dailyStats = {};
+    }
+    
+    if (!data.dailyStats[today]) {
+      data.dailyStats[today] = {
+        productive: 0,
+        unproductive: 0,
+        neutral: 0,
+        websites: {},
+        sessions: []
+      };
+    }
+    
+    // FIXED: Check if we're starting a new day - if so, reset health to 100
+    let healthToSet = data.catHealth || 100;
+    if (data.lastResetDate !== today) {
+      console.log('New day detected during session init - resetting health to 100');
+      healthToSet = 100;
+    }
+    
     await chrome.storage.local.set({
       sessionStartTime: now,
       lastActiveTime: now,
-      lastActiveDomain: null
+      lastActiveDomain: null,
+      dailyStats: data.dailyStats,
+      lastResetDate: today,
+      catHealth: healthToSet
     });
+    
+    console.log('Session initialized for', today, 'with health:', healthToSet);
+    
+    // Check for midnight reset
+    await this.checkMidnightReset();
   }
 
   async setDefaultSettings() {
+    const today = new Date().toDateString();
+    
     const defaultSettings = {
-      catHealth: 100,
+      catHealth: 100, // FIXED: Start at 100 instead of 80
       catHappiness: 70,
       currentScreenTime: 6,
       desiredScreenTime: 4,
-      // NEW: User-configurable daily screen time goal
-      dailyScreenTimeGoal: 6, // hours
       mutedUntil: null,
       totalProductiveTime: 0,
       totalUnproductiveTime: 0,
@@ -47,6 +175,17 @@ class PurrductiveBackground {
       sessionStartTime: Date.now(),
       lastActiveTime: Date.now(),
       lastActiveDomain: null,
+      lastResetDate: today, // FIXED: Track when we last reset
+      historicalData: {}, // FIXED: Store historical daily data
+      dailyStats: {
+        [today]: {
+          productive: 0,
+          unproductive: 0,
+          neutral: 0,
+          websites: {},
+          sessions: []
+        }
+      },
       websiteCategories: {
         productive: [
           'news.google.com', 'bbc.com', 'reuters.com', 'npr.org',
@@ -60,16 +199,26 @@ class PurrductiveBackground {
           'instagram.com', 'tiktok.com', 'youtube.com',
           'facebook.com', 'twitter.com', 'reddit.com',
           'twitch.tv', 'netflix.com', 'hulu.com', 'tinder.com',
-          'snapchat.com', 'pinterest.com', 'x.com'
+          'snapchat.com', 'pinterest.com'
         ]
       },
-      dailyStats: {},
-      weeklyProgress: [],
-      // NEW: Historical data storage
-      historicalData: {}
+      weeklyProgress: []
     };
 
-    await chrome.storage.local.set(defaultSettings);
+    // Only set defaults for missing keys to preserve existing data
+    const existingData = await chrome.storage.local.get(Object.keys(defaultSettings));
+    const updates = {};
+    
+    Object.keys(defaultSettings).forEach(key => {
+      if (existingData[key] === undefined) {
+        updates[key] = defaultSettings[key];
+      }
+    });
+    
+    if (Object.keys(updates).length > 0) {
+      await chrome.storage.local.set(updates);
+      console.log('Set default settings:', Object.keys(updates));
+    }
   }
 
   setupEventListeners() {
@@ -98,6 +247,8 @@ class PurrductiveBackground {
         this.checkPopupThresholds();
       } else if (alarm.name === 'broadcastStats') {
         this.broadcastStatsToAllTabs();
+      } else if (alarm.name === 'midnightCheck') {
+        this.checkMidnightReset(); // FIXED: Automatic midnight checking
       }
     });
 
@@ -108,9 +259,11 @@ class PurrductiveBackground {
   }
 
   createAlarms() {
-    chrome.alarms.create('updateCatStatus', { periodInMinutes: 3 }); // More frequent updates for faster health decay
-    chrome.alarms.create('checkThresholds', { periodInMinutes: 10 });
-    chrome.alarms.create('broadcastStats', { periodInMinutes: 2 });
+    // FIXED: Increased intervals to reduce popup frequency
+    chrome.alarms.create('updateCatStatus', { periodInMinutes: 5 }); // Was 3
+    chrome.alarms.create('checkThresholds', { periodInMinutes: 15 }); // Was 5
+    chrome.alarms.create('broadcastStats', { periodInMinutes: 2 }); // Was 1
+    chrome.alarms.create('midnightCheck', { periodInMinutes: 60 }); // Check every hour for midnight
   }
 
   async pauseTracking() {
@@ -203,7 +356,7 @@ class PurrductiveBackground {
     
     const data = await chrome.storage.local.get([
       'dailyStats', 'lastActiveTime', 'lastActiveDomain', 'totalProductiveTime', 'totalUnproductiveTime',
-      'sessionStartTime', 'historicalData'
+      'sessionStartTime'
     ]);
     
     console.log('Current tracking data:', {
@@ -222,19 +375,6 @@ class PurrductiveBackground {
         sessions: []
       };
       console.log('Initialized daily stats for:', today);
-    }
-
-    // NEW: Initialize historical data
-    if (!data.historicalData[today]) {
-      data.historicalData[today] = {
-        date: today,
-        productive: 0,
-        unproductive: 0,
-        neutral: 0,
-        totalTime: 0,
-        websites: {},
-        healthScore: data.catHealth || 100
-      };
     }
 
     // Calculate time spent on previous site
@@ -257,27 +397,19 @@ class PurrductiveBackground {
           timeSpent: Math.round(timeSpent/1000) + 's'
         });
         
-        // Update daily stats
+        // FIXED: Proper aggregation of productive/unproductive time
         if (prevCategory === 'productive') {
           data.dailyStats[today].productive += timeSpent;
           data.totalProductiveTime = (data.totalProductiveTime || 0) + timeSpent;
-          data.historicalData[today].productive += timeSpent;
           console.log('Added to PRODUCTIVE:', Math.round(timeSpent/1000) + 's');
         } else if (prevCategory === 'unproductive') {
           data.dailyStats[today].unproductive += timeSpent;
           data.totalUnproductiveTime = (data.totalUnproductiveTime || 0) + timeSpent;
-          data.historicalData[today].unproductive += timeSpent;
           console.log('Added to UNPRODUCTIVE:', Math.round(timeSpent/1000) + 's');
         } else {
           data.dailyStats[today].neutral += timeSpent;
-          data.historicalData[today].neutral += timeSpent;
           console.log('Added to NEUTRAL:', Math.round(timeSpent/1000) + 's');
         }
-        
-        // Update historical data
-        data.historicalData[today].totalTime = data.historicalData[today].productive + 
-                                                data.historicalData[today].unproductive + 
-                                                data.historicalData[today].neutral;
         
         if (!data.dailyStats[today].websites[data.lastActiveDomain]) {
           data.dailyStats[today].websites[data.lastActiveDomain] = {
@@ -289,16 +421,6 @@ class PurrductiveBackground {
         data.dailyStats[today].websites[data.lastActiveDomain].time += timeSpent;
         data.dailyStats[today].websites[data.lastActiveDomain].sessions += 1;
         data.dailyStats[today].websites[data.lastActiveDomain].category = prevCategory;
-        
-        // Update historical websites data
-        if (!data.historicalData[today].websites[data.lastActiveDomain]) {
-          data.historicalData[today].websites[data.lastActiveDomain] = {
-            time: 0,
-            category: prevCategory
-          };
-        }
-        data.historicalData[today].websites[data.lastActiveDomain].time += timeSpent;
-        data.historicalData[today].websites[data.lastActiveDomain].category = prevCategory;
         
         data.dailyStats[today].sessions.push({
           domain: data.lastActiveDomain,
@@ -330,86 +452,138 @@ class PurrductiveBackground {
     await chrome.storage.local.set(data);
   }
 
-  // UPDATED: Faster and more aggressive health decay based on user's screen time goal
-  async updateCatStatus() {
-    const data = await chrome.storage.local.get([
-      'catHealth', 'catHappiness', 'totalProductiveTime', 'totalUnproductiveTime',
-      'currentScreenTime', 'desiredScreenTime', 'dailyStats', 'dailyScreenTimeGoal'
-    ]);
+  // FIXED: More aggressive and responsive health calculation
+// FIXED: More balanced and realistic health calculation
+// FIXED: Time-based health calculation instead of percentage-based
+// FIXED: Corrected health calculation with proper thresholds and debugging
+async updateCatStatus() {
+  const data = await chrome.storage.local.get([
+    'catHealth', 'catHappiness', 'totalProductiveTime', 'totalUnproductiveTime',
+    'currentScreenTime', 'desiredScreenTime', 'dailyStats'
+  ]);
 
-    const today = new Date().toDateString();
-    const todayStats = data.dailyStats[today] || { productive: 0, unproductive: 0 };
-    
-    const totalTime = todayStats.productive + todayStats.unproductive;
-    const productiveRatio = totalTime > 0 ? todayStats.productive / totalTime : 0.5;
-    
-    // Get user's daily screen time goal (default to 6 hours if not set)
-    const screenTimeGoal = data.dailyScreenTimeGoal || 6;
-    const totalHours = totalTime / (1000 * 60 * 60);
-    
-    // UPDATED: More aggressive health changes
-    let healthDelta = 0;
-    let happinessDelta = 0;
-    
-    // Base health changes based on productivity ratio (faster decay)
-    if (productiveRatio >= 0.8) {
-      healthDelta += 3; // Increased from 1
-      happinessDelta += 3;
-    } else if (productiveRatio >= 0.6) {
-      healthDelta += 1;
-      happinessDelta += 2;
-    } else if (productiveRatio >= 0.4) {
-      healthDelta -= 2; // Increased penalty
-      happinessDelta -= 1;
-    } else {
-      healthDelta -= 4; // Much faster decay for poor productivity
-      happinessDelta -= 3;
-    }
-    
-    // Screen time penalties (scaled by user's goal)
-    const screenTimeRatio = totalHours / screenTimeGoal;
-    if (screenTimeRatio > 1.5) {
-      healthDelta -= 6; // Severe penalty for excessive screen time
-      happinessDelta -= 4;
-    } else if (screenTimeRatio > 1.2) {
-      healthDelta -= 4; // Moderate penalty
-      happinessDelta -= 3;
-    } else if (screenTimeRatio > 1.0) {
-      healthDelta -= 2; // Light penalty
-      happinessDelta -= 1;
-    }
-    
-    // Additional penalty for too much unproductive time
-    const unproductiveHours = todayStats.unproductive / (1000 * 60 * 60);
-    if (unproductiveHours > 2) {
-      healthDelta -= Math.floor(unproductiveHours); // -1 health per hour of unproductive time over 2 hours
-    }
-    
-    console.log('Health update:', {
-      productiveRatio: Math.round(productiveRatio * 100) + '%',
-      totalHours: Math.round(totalHours * 100) / 100,
-      screenTimeGoal,
-      screenTimeRatio: Math.round(screenTimeRatio * 100) / 100,
-      healthDelta,
-      happinessDelta
-    });
-
-    const newHealth = Math.max(0, Math.min(100, (data.catHealth || 100) + healthDelta));
-    const newHappiness = Math.max(0, Math.min(100, (data.catHappiness || 70) + happinessDelta));
-
-    // Update historical data with current health
-    const historicalUpdate = {};
-    historicalUpdate[`historicalData.${today}.healthScore`] = newHealth;
-
-    await chrome.storage.local.set({
-      catHealth: newHealth,
-      catHappiness: newHappiness,
-      ...historicalUpdate
-    });
-
-    await this.checkPopupThresholds();
-    await this.broadcastStatsToAllTabs();
+  const today = new Date().toDateString();
+  const todayStats = data.dailyStats[today] || { productive: 0, unproductive: 0 };
+  
+  const productiveMinutes = todayStats.productive / (1000 * 60);
+  const unproductiveMinutes = todayStats.unproductive / (1000 * 60);
+  const totalMinutes = productiveMinutes + unproductiveMinutes;
+  
+  console.log('=== HEALTH CALCULATION DEBUG ===');
+  console.log('Current data:', {
+    productiveMinutes: Math.round(productiveMinutes * 10) / 10,
+    unproductiveMinutes: Math.round(unproductiveMinutes * 10) / 10,
+    totalMinutes: Math.round(totalMinutes * 10) / 10,
+    currentHealth: data.catHealth
+  });
+  
+  // FIXED: Don't calculate until meaningful activity (reduced to 3 minutes)
+  if (totalMinutes < 3) {
+    console.log('Not enough activity yet (', Math.round(totalMinutes * 10) / 10, 'min) - keeping current health');
+    return;
   }
+  
+  // Start with perfect health
+  let newHealth = 100;
+  console.log('Starting with base health:', newHealth);
+  
+  // FIXED: Much more lenient unproductive time penalties
+  let unproductivePenalty = 0;
+  
+  if (unproductiveMinutes <= 15) {
+    // 0-15 minutes unproductive: NO penalty (everyone needs breaks and short distractions)
+    unproductivePenalty = 0;
+    console.log('Unproductive time ≤15min: No penalty');
+  } else if (unproductiveMinutes <= 45) {
+    // 16-45 minutes unproductive: very small penalty
+    unproductivePenalty = (unproductiveMinutes - 15) * 0.5; // 0.5% per minute over 15
+    console.log('Unproductive time 16-45min: Small penalty =', Math.round(unproductivePenalty));
+  } else if (unproductiveMinutes <= 90) {
+    // 46-90 minutes unproductive: moderate penalty
+    unproductivePenalty = 15 + (unproductiveMinutes - 45) * 1; // Start at 15%, then 1% per minute
+    console.log('Unproductive time 46-90min: Moderate penalty =', Math.round(unproductivePenalty));
+  } else if (unproductiveMinutes <= 180) {
+    // 91-180 minutes unproductive: heavy penalty
+    unproductivePenalty = 60 + (unproductiveMinutes - 90) * 0.5; // Start at 60%, then 0.5% per minute
+    console.log('Unproductive time 91-180min: Heavy penalty =', Math.round(unproductivePenalty));
+  } else {
+    // 180+ minutes unproductive: cat is dying
+    unproductivePenalty = Math.min(95, 105 + (unproductiveMinutes - 180) * 0.1); // Cap at 95% penalty
+    console.log('Unproductive time 180+min: Severe penalty =', Math.round(unproductivePenalty));
+  }
+  
+  newHealth -= unproductivePenalty;
+  console.log('Health after unproductive penalty:', newHealth);
+  
+  // FIXED: Productive time gives meaningful boosts
+  let productiveBonus = 0;
+  if (productiveMinutes >= 5) {
+    // Give bonus for any productive time over 5 minutes
+    productiveBonus = Math.min(productiveMinutes * 0.5, 25); // 0.5% per minute, max 25%
+    console.log('Productive bonus for', Math.round(productiveMinutes), 'min:', Math.round(productiveBonus));
+  }
+  
+  newHealth += productiveBonus;
+  console.log('Health after productive bonus:', newHealth);
+  
+  // FIXED: Screen time penalty only for truly excessive use
+  const totalHours = totalMinutes / 60;
+  const screenTimeTarget = data.currentScreenTime || 6;
+  let screenPenalty = 0;
+  
+  if (totalHours > screenTimeTarget + 1) { // Only penalize if more than 1 hour over target
+    const excessHours = totalHours - (screenTimeTarget + 1);
+    screenPenalty = Math.min(excessHours * 3, 10); // 3% per excess hour, max 10%
+    console.log('Screen time penalty:', Math.round(screenPenalty), '% for', Math.round(excessHours * 10) / 10, 'excess hours');
+  }
+  
+  newHealth -= screenPenalty;
+  console.log('Health after screen time penalty:', newHealth);
+  
+  // Cap health between 0-100
+  newHealth = Math.max(0, Math.min(100, Math.round(newHealth)));
+  
+  // FIXED: Even more gradual health changes - only move 2% per update max
+  const currentHealth = data.catHealth || 100;
+  const maxChangePerUpdate = 2; // Much more gradual
+  const healthDifference = newHealth - currentHealth;
+  
+  let finalHealth;
+  if (Math.abs(healthDifference) <= maxChangePerUpdate) {
+    finalHealth = newHealth;
+  } else {
+    finalHealth = currentHealth + (healthDifference > 0 ? maxChangePerUpdate : -maxChangePerUpdate);
+  }
+  
+  finalHealth = Math.max(0, Math.min(100, Math.round(finalHealth)));
+  
+  console.log('=== FINAL CALCULATION ===');
+  console.log({
+    calculatedHealth: newHealth,
+    currentHealth: currentHealth,
+    finalHealth: finalHealth,
+    change: finalHealth - currentHealth,
+    unproductiveMinutes: Math.round(unproductiveMinutes * 10) / 10,
+    productiveMinutes: Math.round(productiveMinutes * 10) / 10,
+    unproductivePenalty: Math.round(unproductivePenalty),
+    productiveBonus: Math.round(productiveBonus)
+  });
+  console.log('===============================');
+  
+  // Happiness follows health but can be slightly higher
+  const targetHappiness = Math.min(finalHealth + 10, 100);
+  const currentHappiness = data.catHappiness || 70;
+  const happinessDelta = (targetHappiness - currentHappiness) * 0.2;
+  const newHappiness = Math.max(0, Math.min(100, Math.round(currentHappiness + happinessDelta)));
+
+  await chrome.storage.local.set({
+    catHealth: finalHealth,
+    catHappiness: newHappiness
+  });
+
+  await this.checkPopupThresholds();
+  await this.broadcastStatsToAllTabs();
+}
 
   async broadcastStatsToAllTabs() {
     try {
@@ -427,10 +601,11 @@ class PurrductiveBackground {
     }
   }
 
+  // FIXED: All percentages are now whole numbers
   async getAllStats() {
     const data = await chrome.storage.local.get([
       'catHealth', 'catHappiness', 'dailyStats', 'totalProductiveTime', 
-      'totalUnproductiveTime', 'currentScreenTime', 'desiredScreenTime', 'dailyScreenTimeGoal'
+      'totalUnproductiveTime', 'currentScreenTime', 'desiredScreenTime'
     ]);
 
     const today = new Date().toDateString();
@@ -441,6 +616,7 @@ class PurrductiveBackground {
       websites: {} 
     };
 
+    // FIXED: Proper productivity calculation with whole numbers
     const totalTime = todayStats.productive + todayStats.unproductive;
     const productivityScore = totalTime > 0 ? 
       Math.round((todayStats.productive / totalTime) * 100) : 100;
@@ -465,9 +641,9 @@ class PurrductiveBackground {
     };
 
     return {
-      catHealth: Math.round(data.catHealth || 100),
+      catHealth: Math.round(data.catHealth || 100), // FIXED: Default to 100
       catHappiness: Math.round(data.catHappiness || 70),
-      productivityScore,
+      productivityScore, // Already rounded above
       productiveTime: formatTime(todayStats.productive),
       unproductiveTime: formatTime(todayStats.unproductive),
       totalTime: formatTime(totalTime),
@@ -477,11 +653,11 @@ class PurrductiveBackground {
       websites,
       currentScreenTime: data.currentScreenTime || 6,
       desiredScreenTime: data.desiredScreenTime || 4,
-      dailyScreenTimeGoal: data.dailyScreenTimeGoal || 6, // NEW
       timestamp: Date.now()
     };
   }
 
+  // FIXED: Simplified popup threshold logic - only health matters
   async checkPopupThresholds() {
     const data = await chrome.storage.local.get([
       'catHealth', 'popupLastShown', 'mutedUntil'
@@ -496,6 +672,7 @@ class PurrductiveBackground {
       return;
     }
 
+    // FIXED: Only trigger on low health to reduce frequency
     const shouldShowPopup = data.catHealth < this.popupConfig.healthThreshold;
 
     if (shouldShowPopup) {
@@ -532,6 +709,40 @@ class PurrductiveBackground {
     await this.checkPopupThresholds();
   }
 
+  // FIXED: Method to get historical data for comparison
+  async getHistoricalData(daysBack = 7) {
+    const data = await chrome.storage.local.get(['historicalData', 'dailyStats']);
+    const historicalData = data.historicalData || {};
+    const currentStats = data.dailyStats || {};
+    
+    const results = [];
+    const today = new Date();
+    
+    for (let i = 0; i < daysBack; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toDateString();
+      
+      if (i === 0 && currentStats[dateKey]) {
+        // Today's data (in progress)
+        results.push({
+          date: dateKey,
+          ...currentStats[dateKey],
+          isToday: true
+        });
+      } else if (historicalData[dateKey]) {
+        // Historical data
+        results.push({
+          date: dateKey,
+          ...historicalData[dateKey],
+          isToday: false
+        });
+      }
+    }
+    
+    return results;
+  }
+
   async handleMessage(message, sender, sendResponse) {
     switch (message.type) {
       case 'GET_CAT_STATUS':
@@ -543,31 +754,6 @@ class PurrductiveBackground {
         const allStats = await this.getAllStats();
         sendResponse(allStats);
         break;
-
-      // NEW: Get historical data
-      case 'GET_HISTORICAL_DATA':
-        const historicalData = await chrome.storage.local.get(['historicalData', 'dailyStats']);
-        sendResponse({
-          historicalData: historicalData.historicalData || {},
-          dailyStats: historicalData.dailyStats || {}
-        });
-        break;
-
-      // NEW: Get settings
-      case 'GET_SETTINGS':
-        const settings = await chrome.storage.local.get([
-          'dailyScreenTimeGoal', 'websiteCategories', 'desiredScreenTime'
-        ]);
-        sendResponse(settings);
-        break;
-
-      // NEW: Update website categories
-      case 'UPDATE_WEBSITE_CATEGORIES':
-        await chrome.storage.local.set({ 
-          websiteCategories: message.categories 
-        });
-        sendResponse({ success: true });
-        break;
         
       case 'MUTE_NOTIFICATIONS':
         const muteUntil = Date.now() + (24 * 60 * 60 * 1000);
@@ -578,6 +764,11 @@ class PurrductiveBackground {
       case 'GET_DAILY_STATS':
         const statsData = await chrome.storage.local.get(['dailyStats', 'weeklyProgress']);
         sendResponse(statsData);
+        break;
+
+      case 'GET_HISTORICAL_DATA':
+        const historicalData = await this.getHistoricalData(message.daysBack || 7);
+        sendResponse(historicalData);
         break;
         
       case 'UPDATE_SETTINGS':
@@ -597,6 +788,11 @@ class PurrductiveBackground {
 
       case 'FORCE_CHECK_THRESHOLDS':
         await this.checkPopupThresholds();
+        sendResponse({ success: true });
+        break;
+
+      case 'FORCE_MIDNIGHT_RESET':
+        await this.checkMidnightReset();
         sendResponse({ success: true });
         break;
         

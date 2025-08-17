@@ -985,6 +985,14 @@ video {
   height: 16rem;
 }
 
+.h-16 {
+  height: 4rem;
+}
+
+.h-24 {
+  height: 6rem;
+}
+
 .max-h-none {
   max-height: none;
 }
@@ -1043,6 +1051,14 @@ video {
 
 .w-3 {
   width: 0.75rem;
+}
+
+.w-16 {
+  width: 4rem;
+}
+
+.w-24 {
+  width: 6rem;
 }
 
 .max-w-lg {

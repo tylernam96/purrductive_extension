@@ -106,7 +106,7 @@ class ProductivityDashboard {
     this.updateHealthBar(stats.catHealth);
     this.updateProductivityStats(stats);
     this.updateAppUsage(stats.websites);
-    this.updateCatEmoji(stats);
+    this.updateCatImage(stats);
     
     // Double-check the display was updated
     setTimeout(() => {
@@ -295,7 +295,6 @@ class ProductivityDashboard {
         'instagram.com': '📷',
         'facebook.com': '📘',
         'twitter.com': '🐦',
-        'x.com': '🐦',
         'reddit.com': '🤖',
         'tiktok.com': '🎵',
         'netflix.com': '🎬',
@@ -310,7 +309,6 @@ class ProductivityDashboard {
         'news.google.com': '📰',
         'claude.ai': '🤖',
         'chatgpt.com': '🤖',
-        'coingecko.com': '🦎',
         'default': '🌐'
       };
       
@@ -350,25 +348,40 @@ class ProductivityDashboard {
     return appElement;
   }
 
-  updateCatEmoji(stats) {
-    const catEmoji = document.querySelector('.cat-emoji');
-    if (!catEmoji) return;
+  updateCatImage(stats) {
+    const catImage = document.getElementById('cat-image');
+    if (!catImage) return;
 
-    let emoji = '😸';
+    let imagePath = 'images/happy.png';
+    let altText = 'Happy Cat';
+    let cssClass = 'cat-healthy';
     
     if (stats.catHealth < 30) {
-      emoji = '😿';
-    } else if (stats.catHealth < 50) {
-      emoji = '😾';
-    } else if (stats.productivityScore > 80) {
-      emoji = '😻';
-    } else if (stats.productivityScore > 60) {
-      emoji = '😸';
+      imagePath = 'images/dead.png';
+      altText = 'Dead Cat';
+      cssClass = 'cat-dead';
+    } else if (stats.catHealth < 60) {
+      imagePath = 'images/sad.png';
+      altText = 'Sad Cat';
+      cssClass = 'cat-sad';
     } else {
-      emoji = '🙀';
+      imagePath = 'images/happy.png';
+      altText = 'Happy Cat';
+      cssClass = 'cat-healthy';
     }
     
-    catEmoji.textContent = emoji;
+    // Remove existing health classes
+    catImage.classList.remove('cat-healthy', 'cat-sad', 'cat-dead');
+    
+    catImage.src = imagePath;
+    catImage.alt = altText;
+    catImage.classList.add(cssClass);
+    
+    // Add a subtle transition effect when changing images
+    catImage.style.opacity = '0.8';
+    setTimeout(() => {
+      catImage.style.opacity = '1';
+    }, 150);
   }
 
   showLoadingState() {
